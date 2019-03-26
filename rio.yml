@@ -34,7 +34,8 @@ pipelines:
   build:
     template: buildozer:v1:publish
   publish:
-    libraries: true
+    libraries:
+      repo: m2:oss-patched
   finally:
     radar:
       annotate: true
@@ -43,8 +44,10 @@ pipelines:
   build:
     template: buildozer:v1:publish
   publish:
-    libraries: true
+    libraries:
+      repo: m2:oss-patched
     release: true
+
   finally:
     radar:
       annotate: true
