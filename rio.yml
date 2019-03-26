@@ -20,17 +20,17 @@ publish:
 
 pipelines:
 # prb builds
-- branchName: apple-1.0
+- branchName: apple-0.1
   build:
     template: buildozer:v1:prb
 
-- branchName: apple-1.0-release
+- branchName: apple-0.1-release
   build:
     template: buildozer:v1:prb
 
 # --------------------------
 # Publish pipelines
-- branchName: apple-1.0
+- branchName: apple-0.1
   build:
     template: buildozer:v1:publish
   publish:
@@ -39,7 +39,7 @@ pipelines:
     radar:
       annotate: true
 
-- branchName: apple-1.0-release
+- branchName: apple-0.1-release
   build:
     template: buildozer:v1:publish
   publish:
