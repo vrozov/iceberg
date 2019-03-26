@@ -1,0 +1,51 @@
+schemaVersion: 2.0
+timeout: 30
+
+notify:
+  pullRequestComment:
+    postOnSuccess: false
+
+machine:
+  java:
+    version: 1.8
+  env:
+    skipTest: false
+
+publish:
+  reports:
+    checkstyle: true
+    pmd: true
+    findbugs: true
+    junit: true
+
+pipelines:
+# prb builds
+- branchName: apple-1.0
+  build:
+    template: buildozer:v1:prb
+
+- branchName: apple-1.0-release
+  build:
+    template: buildozer:v1:prb
+
+# --------------------------
+# Publish pipelines
+- branchName: apple-1.0
+  build:
+    template: buildozer:v1:publish
+  publish:
+    libraries: true
+  finally:
+    radar:
+      annotate: true
+
+- branchName: apple-1.0-release
+  build:
+    template: buildozer:v1:publish
+  publish:
+    libraries: true
+    release: true
+  finally:
+    radar:
+      annotate: true
+

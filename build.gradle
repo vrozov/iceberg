@@ -27,9 +27,11 @@ buildscript {
 }
 
 plugins {
-  id 'nebula.netflixoss' version '4.1.0'
+//  id 'nebula.netflixoss' version '4.1.0'
   id 'com.palantir.git-version' version '0.9.1'
 }
+
+apply from: file("${project.rootProject.projectDir}/gradle/build-rio.gradle")
 
 if (JavaVersion.current() != JavaVersion.VERSION_1_8) {
   throw new GradleException("This build must be run with Java 8")
@@ -38,14 +40,13 @@ if (JavaVersion.current() != JavaVersion.VERSION_1_8) {
 allprojects {
   group = "org.apache.iceberg"
   apply plugin: 'idea'
-  version = gitVersion()
 }
 
 apply plugin: 'nebula-aggregate-javadocs'
 
 subprojects {
-  apply plugin: 'nebula.javadoc-jar'
-  apply plugin: 'nebula.source-jar'
+//  apply plugin: 'nebula.javadoc-jar'
+//  apply plugin: 'nebula.source-jar'
   apply plugin: 'java'
   apply plugin: 'maven' // make pom files for deployment
   apply plugin: 'nebula.maven-base-publish'
