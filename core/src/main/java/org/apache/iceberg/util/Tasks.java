@@ -397,7 +397,10 @@ public class Tasks {
 
         } catch (Exception e) {
           long durationMs = System.currentTimeMillis() - start;
-          if (attempt >= maxAttempts || durationMs > maxDurationMs) {
+          if (attempt >= maxAttempts || (durationMs > maxDurationMs && attempt > 1)) {
+            if (durationMs > maxDurationMs) {
+              LOG.info("Stopping retries after {} ms", durationMs);
+            }
             throw e;
           }
 
@@ -407,6 +410,7 @@ public class Tasks {
             for (Class<? extends Exception> exClass : onlyRetryExceptions) {
               if (exClass.isInstance(e)) {
                 matchedRetryException = true;
+                break;
               }
             }
             if (!matchedRetryException) {
