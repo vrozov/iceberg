@@ -29,10 +29,13 @@ import org.apache.iceberg.{DataFile, DataFiles, Metrics, PartitionSpec}
 import org.apache.iceberg.parquet.ParquetMetrics
 import org.apache.iceberg.spark.hacks.Hive
 import org.apache.parquet.hadoop.ParquetFileReader
-import org.apache.spark.sql.{DataFrame, SparkSession}
+import org.apache.spark.sql.catalyst.CatalystTypeConverters
+import org.apache.spark.sql.{DataFrame, Dataset, SparkSession}
 import org.apache.spark.sql.catalyst.catalog.CatalogTablePartition
+import org.apache.spark.sql.execution.datasources.{FileStatusCache, InMemoryFileIndex}
 
 import scala.collection.JavaConverters._
+import scala.collection.mutable
 
 object SparkTableUtil {
   /**
@@ -57,24 +60,44 @@ object SparkTableUtil {
   }
 
   /**
-   * Returns the data files in a partition by listing the partition location.
-   *
-   * For Parquet partitions, this will read metrics from the file footer. For Avro partitions,
-   * metrics are set to null.
-   *
-   * @param partition partition key, e.g., "a=1/b=2"
-   * @param uri partition location URI
-   * @param format partition format, avro or parquet
-   * @return a seq of [[SparkDataFile]]
-   */
+    * Returns the data files in a partition by listing the partition location.
+    *
+    * For Parquet partitions, this will read metrics from the file footer. For Avro partitions,
+    * metrics are set to null.
+    *
+    * @param partition partition key, e.g., "a=1/b=2"
+    * @param uri partition location URI
+    * @param format partition format, avro or parquet
+    * @return a seq of [[SparkDataFile]]
+    */
   def listPartition(
       partition: Map[String, String],
       uri: String,
       format: String): Seq[SparkDataFile] = {
+    listPartition(null, partition, uri, format)
+  }
+
+  /**
+    * Returns the data files in a partition by listing the partition location.
+    *
+    * For Parquet partitions, this will read metrics from the file footer. For Avro partitions,
+    * metrics are set to null.
+    *
+    * @param conf Hadoop configurations
+    * @param partition partition key, e.g., "a=1/b=2"
+    * @param uri partition location URI
+    * @param format partition format, avro or parquet
+    * @return a seq of [[SparkDataFile]]
+    */
+  def listPartition(
+      conf: Configuration,
+      partition: Map[String, String],
+      uri: String,
+      format: String): Seq[SparkDataFile] = {
     if (format.contains("avro")) {
-      listAvroPartition(partition, uri)
+      listAvroPartition(conf, partition, uri)
     } else if (format.contains("parquet")) {
-      listParquetPartition(partition, uri)
+      listParquetPartition(conf, partition, uri)
     } else {
       throw new UnsupportedOperationException(s"Unknown partition format: $format")
     }
@@ -210,7 +233,17 @@ object SparkTableUtil {
   private def listAvroPartition(
       partitionPath: Map[String, String],
       partitionUri: String): Seq[SparkDataFile] = {
-    val conf = new Configuration()
+
+    listAvroPartition(null, partitionPath, partitionUri)
+  }
+
+  private def listAvroPartition(
+      conf: Configuration,
+      partitionPath: Map[String, String],
+      partitionUri: String): Seq[SparkDataFile] = {
+    if(conf == null) {
+      val conf = new Configuration()
+    }
     val partition = new Path(partitionUri)
     val fs = partition.getFileSystem(conf)
 
@@ -232,7 +265,18 @@ object SparkTableUtil {
   private def listParquetPartition(
       partitionPath: Map[String, String],
       partitionUri: String): Seq[SparkDataFile] = {
-    val conf = new Configuration()
+
+    listParquetPartition(null, partitionPath, partitionUri)
+  }
+
+  //noinspection ScalaDeprecation
+  private def listParquetPartition(
+      conf: Configuration,
+      partitionPath: Map[String, String],
+      partitionUri: String): Seq[SparkDataFile] = {
+    if(conf == null) {
+      val conf = new Configuration()
+    }
     val partition = new Path(partitionUri)
     val fs = partition.getFileSystem(conf)
 
@@ -251,5 +295,32 @@ object SparkTableUtil {
         bytesMapToArray(metrics.upperBounds))
     }
   }
-}
 
+  case class Partition(values: Map[String, String], uri: String)
+
+  def filesDataset(spark: SparkSession, rootPath: Path, format: String): Dataset[SparkDataFile] = {
+    import spark.implicits._
+
+    val partitionDS = getPartitions(spark, rootPath).toDS()
+    partitionDS.flatMap { partition =>
+      listPartition(partition.values, partition.uri, format)
+    }
+  }
+
+  def getPartitions(spark: SparkSession, rootPath: Path): Seq[Partition] = {
+    val fileStatusCache = FileStatusCache.getOrCreate(spark)
+    val fileIndex = new InMemoryFileIndex(spark, Seq(rootPath), Map.empty, None, fileStatusCache)
+    val spec = fileIndex.partitionSpec
+    val schema = spec.partitionColumns
+    spec.partitions.map { p =>
+      val values = mutable.Map.empty[String, String]
+      schema.foreach { field =>
+        val fieldIndex = schema.fieldIndex(field.name)
+        val catalystValue = p.values.get(fieldIndex, field.dataType)
+        val value = CatalystTypeConverters.convertToScala(catalystValue, field.dataType)
+        values.update(field.name, value.toString)
+      }
+      Partition(values.toMap, p.path.toString)
+    }
+  }
+}

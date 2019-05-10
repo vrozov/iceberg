@@ -38,7 +38,7 @@ import org.apache.iceberg.types.Comparators;
 import org.apache.iceberg.types.Type;
 import org.apache.iceberg.types.Types;
 
-class Literals {
+public class Literals {
   private Literals() {
   }
 
@@ -53,7 +53,7 @@ class Literals {
    * @return a Literal for the given value
    */
   @SuppressWarnings("unchecked")
-  static <T> Literal<T> from(T value) {
+  public static <T> Literal<T> from(T value) {
     Preconditions.checkNotNull(value, "Cannot create expression literal from null");
 
     if (value instanceof Boolean) {

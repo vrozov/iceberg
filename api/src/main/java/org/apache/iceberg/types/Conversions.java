@@ -31,6 +31,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.UUID;
 import org.apache.iceberg.exceptions.RuntimeIOException;
+import org.apache.iceberg.expressions.Literals;
+import org.apache.iceberg.types.Types.DateType;
 
 public class Conversions {
 
@@ -54,6 +56,8 @@ public class Conversions {
         return Long.valueOf(asString);
       case DOUBLE:
         return Double.valueOf(asString);
+      case DATE:
+        return Literals.from(asString).to(DateType.get()).value();
       case STRING:
         return asString;
       case UUID:
