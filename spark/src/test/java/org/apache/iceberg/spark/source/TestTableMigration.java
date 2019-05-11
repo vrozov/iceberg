@@ -39,6 +39,7 @@ import org.junit.Test;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
+import scala.collection.Seq;
 
 import static org.apache.iceberg.types.Types.NestedField.optional;
 import static org.apache.iceberg.types.Types.NestedField.required;
@@ -89,41 +90,38 @@ public class TestTableMigration {
                 .build();
         hadoopTables.create(icebergSchema, partitionSpec, icebergTableLocation);
 
-        // Get all files from the source Spark table
-        Dataset<SparkDataFile> files = SparkTableUtil.filesDataset(spark, sparkTablePath, "parquet");
-
+        Configuration configuration = spark.sparkContext().hadoopConfiguration();
         // Make Spark aware that we are using manifest lists in Iceberg
-        spark.sparkContext().hadoopConfiguration().set(TableProperties.MANIFEST_LISTS_ENABLED, "true");
+        configuration.set(TableProperties.MANIFEST_LISTS_ENABLED, "true");
+
+        // Get all files from the source Spark table
+        Seq<SparkDataFile> files = SparkTableUtil.partitionFiles(spark, sparkTablePath, "parquet");
+
+        HadoopTables tables = new HadoopTables(spark.sparkContext().hadoopConfiguration());
+        Table table = tables.load(icebergTableLocation);
+        AppendFiles appendFiles = table.newAppend();
 
         // Append all files to the table without copying them
-        files.orderBy("path")
-                .coalesce(10)
-                .foreachPartition(fileIter -> {
-                    HadoopTables tables = new HadoopTables();
-                    Table table = tables.load(icebergTableLocation);
-                    AppendFiles appendFiles = table.newAppend();
-                    fileIter.forEachRemaining(file -> appendFiles.appendFile(file.toDataFile(table.spec())));
-                    appendFiles.commit();
-                });
+        scala.collection.JavaConverters.seqAsJavaListConverter(files).asJava().stream().forEach(file -> {
+            appendFiles.appendFile(file.toDataFile(table.spec()));
+        });
+        appendFiles.commit();
 
         // Query the source Spark table
         Dataset<Row> fileSourceDF = spark.read()
                 .format("parquet")
                 .load(sparkTableLocation);
 
-        List<Row> fileSourceRows = fileSourceDF
-                .orderBy("id")
-                .collectAsList();
+        long fileSourceRows = fileSourceDF
+                .count();
 
         // Query the Iceberg table that references the data written using Spark
         Dataset<Row> icebergDF = spark.read()
                 .format("iceberg")
                 .load(icebergTableLocation);
 
-        List<Row> icebergRows = icebergDF
-                .select("id", "stringCol", "dateCol", "intCol")
-                .orderBy("id")
-                .collectAsList();
+        long icebergRows = icebergDF
+                .count();
 
         Assert.assertEquals(fileSourceRows, icebergRows);
     }

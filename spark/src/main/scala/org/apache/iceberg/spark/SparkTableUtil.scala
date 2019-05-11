@@ -301,10 +301,22 @@ object SparkTableUtil {
   def filesDataset(spark: SparkSession, rootPath: Path, format: String): Dataset[SparkDataFile] = {
     import spark.implicits._
 
-    val partitionDS = getPartitions(spark, rootPath).toDS()
-    partitionDS.flatMap { partition =>
-      listPartition(partition.values, partition.uri, format)
+    val partitions = getPartitions(spark, rootPath)
+    var dataFiles: Seq[SparkDataFile] = Seq()
+    partitions.foreach { partition =>
+      dataFiles ++= listPartition(spark.sparkContext.hadoopConfiguration, partition.values, partition.uri, format)
     }
+    dataFiles.toDS()
+  }
+
+  def partitionFiles(spark: SparkSession, rootPath: Path, format: String): Seq[SparkDataFile] = {
+
+    val partitions = getPartitions(spark, rootPath)
+    var dataFiles: Seq[SparkDataFile] = Seq()
+    partitions.foreach { partition =>
+      dataFiles ++= listPartition(spark.sparkContext.hadoopConfiguration, partition.values, partition.uri, format)
+    }
+    dataFiles
   }
 
   def getPartitions(spark: SparkSession, rootPath: Path): Seq[Partition] = {
