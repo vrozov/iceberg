@@ -27,9 +27,6 @@ buildscript {
     classpath 'com.github.jengelman.gradle.plugins:shadow:5.0.0'
     classpath 'com.netflix.nebula:gradle-aggregate-javadocs-plugin:2.2.+'
     classpath 'com.netflix.nebula:nebula-publishing-plugin:5.1.5'
-    classpath 'com.palantir.baseline:gradle-baseline-java:0.55.0'
-    classpath 'com.diffplug.spotless:spotless-plugin-gradle:3.14.0'
-    classpath 'gradle.plugin.org.inferred:gradle-processors:2.1.0'
   }
 }
 
@@ -50,7 +47,7 @@ allprojects {
 }
 
 apply plugin: 'nebula-aggregate-javadocs'
-apply plugin: 'com.palantir.baseline-config'
+//apply plugin: 'com.palantir.baseline-config'
 
 subprojects {
 //  apply plugin: 'nebula.javadoc-jar'
@@ -61,7 +58,6 @@ subprojects {
   repositories {
     mavenCentral()
     mavenLocal()
-    maven { url  "http://palantir.bintray.com/releases" }
   }
 
   configurations {
@@ -132,14 +128,14 @@ configure(baselineProjects) {
   
   // Thus we concede to applying all of the Baseline plugins individually on all the projects we are
   // ready to enforce linting on.
-  apply plugin: 'org.inferred.processors'
-  apply plugin: 'com.palantir.baseline-checkstyle'
-  apply plugin: 'com.palantir.baseline-error-prone'
-  apply plugin: 'com.palantir.baseline-scalastyle'
-  apply plugin: 'com.palantir.baseline-class-uniqueness'
-  apply plugin: 'com.palantir.baseline-reproducibility'
-  apply plugin: 'com.palantir.baseline-exact-dependencies'
-  apply plugin: 'com.palantir.baseline-release-compatibility'
+//  apply plugin: 'org.inferred.processors'
+//  apply plugin: 'com.palantir.baseline-checkstyle'
+//  apply plugin: 'com.palantir.baseline-error-prone'
+//  apply plugin: 'com.palantir.baseline-scalastyle'
+//  apply plugin: 'com.palantir.baseline-class-uniqueness'
+//  apply plugin: 'com.palantir.baseline-reproducibility'
+//  apply plugin: 'com.palantir.baseline-exact-dependencies'
+//  apply plugin: 'com.palantir.baseline-release-compatibility'
   
   // Can't use the built-in Baseline spotless format because it's opinionated about the import
   // order of having static imports after non-static imports, and this cannot be overridden.
