@@ -24,7 +24,7 @@ import java.nio.ByteBuffer
 import java.util
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{Path, PathFilter}
-import org.apache.iceberg.{DataFile, DataFiles, Metrics, PartitionSpec, TableProperties}
+import org.apache.iceberg.{DataFile, DataFiles, Metrics, MetricsConfig, PartitionSpec}
 import org.apache.iceberg.hadoop.HadoopInputFile
 import org.apache.iceberg.orc.OrcMetrics
 import org.apache.iceberg.parquet.ParquetUtil
@@ -144,7 +144,8 @@ object SparkTableUtil {
   private def listParquetPartition(
       conf: Configuration,
       partitionPath: Map[String, String],
-      partitionUri: String): Seq[SparkDataFile] = {
+      partitionUri: String,
+      metricsConfig: MetricsConfig = MetricsConfig.getDefault): Seq[SparkDataFile] = {
     if (conf == null) {
       val conf = new Configuration()
     }
@@ -152,8 +153,7 @@ object SparkTableUtil {
     val fs = partition.getFileSystem(conf)
 
     fs.listStatus(partition, HiddenPathFilter).filter(_.isFile).map { stat =>
-      val metrics = ParquetUtil.footerMetrics(ParquetFileReader.readFooter(conf, stat),
-        TableProperties.WRITE_METADATA_TRUNCATE_BYTES_DEFAULT)
+      val metrics = ParquetUtil.footerMetrics(ParquetFileReader.readFooter(conf, stat), metricsConfig)
 
       SparkDataFile(
         stat.getPath.toString,
