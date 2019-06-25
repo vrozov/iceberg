@@ -9,6 +9,9 @@ build
 out
 # web site build
 site/site
+.out
+*/.out
+*/.dist
 
 __pycache__/
 *.py[cod]

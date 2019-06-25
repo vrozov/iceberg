@@ -35,10 +35,12 @@ buildscript {
 }
 
 plugins {
-  id 'nebula.netflixoss' version '4.1.0'
+  // id 'nebula.netflixoss' version '4.1.0'
   id 'com.palantir.git-version' version '0.9.1'
   id 'com.palantir.consistent-versions' version '1.9.2'
 }
+
+apply from: file("${project.rootProject.projectDir}/gradle/build-rio.gradle")
 
 if (JavaVersion.current() != JavaVersion.VERSION_1_8) {
   throw new GradleException("This build must be run with Java 8")
@@ -47,7 +49,7 @@ if (JavaVersion.current() != JavaVersion.VERSION_1_8) {
 allprojects {
   group = "org.apache.iceberg"
   apply plugin: 'com.palantir.baseline-idea'
-  version = gitVersion()
+  // version = gitVersion()
   repositories {
     maven { url  "http://palantir.bintray.com/releases" }
     mavenCentral()
@@ -58,8 +60,8 @@ allprojects {
 apply plugin: 'com.palantir.baseline-config'
 
 subprojects {
-  apply plugin: 'nebula.javadoc-jar'
-  apply plugin: 'nebula.source-jar'
+  // apply plugin: 'nebula.javadoc-jar'
+  // apply plugin: 'nebula.source-jar'
   apply plugin: 'java'
   apply plugin: 'maven' // make pom files for deployment
   apply plugin: 'maven-publish'
@@ -111,12 +113,12 @@ subprojects {
   }
 
   // add LICENSE and NOTICE
-  [jar, sourceJar, javadocJar, testJar].each { task ->
-    task.from(rootDir) {
-      include 'LICENSE'
-      include 'NOTICE'
-    }
-  }
+  // [jar, sourceJar, javadocJar, testJar].each { task ->
+  //   task.from(rootDir) {
+  //     include 'LICENSE'
+  //     include 'NOTICE'
+  //   }
+  // }
 
   publishing {
     publications {
