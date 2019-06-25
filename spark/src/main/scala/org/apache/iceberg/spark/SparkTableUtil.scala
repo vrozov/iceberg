@@ -30,9 +30,12 @@ import org.apache.iceberg.orc.OrcMetrics
 import org.apache.iceberg.parquet.ParquetUtil
 import org.apache.iceberg.spark.hacks.Hive
 import org.apache.parquet.hadoop.ParquetFileReader
-import org.apache.spark.sql.{DataFrame, SparkSession}
+import org.apache.spark.sql.{DataFrame, Dataset, SparkSession}
+import org.apache.spark.sql.catalyst.CatalystTypeConverters
 import org.apache.spark.sql.catalyst.catalog.CatalogTablePartition
+import org.apache.spark.sql.execution.datasources.{FileStatusCache, InMemoryFileIndex}
 import scala.collection.JavaConverters._
+import scala.collection.mutable
 
 object SparkTableUtil {
   /**
@@ -71,58 +74,123 @@ object SparkTableUtil {
       partition: Map[String, String],
       uri: String,
       format: String): Seq[SparkDataFile] = {
+    listPartition(null, partition, uri, format)
+  }
+
+  def filesDataset(spark: SparkSession, rootPath: Path, format: String): Dataset[SparkDataFile] = {
+    import spark.implicits._
+
+    val partitions = getPartitions(spark, rootPath)
+    var dataFiles: Seq[SparkDataFile] = Seq()
+    partitions.foreach { partition =>
+      dataFiles ++= listPartition(spark.sparkContext.hadoopConfiguration, partition.values, partition.uri, format)
+    }
+    dataFiles.toDS()
+  }
+
+  /**
+   * Returns the data files in a partition by listing the partition location.
+   *
+   * For Parquet partitions, this will read metrics from the file footer. For Avro partitions,
+   * metrics are set to null.
+   *
+   * @param conf Hadoop configurations
+   * @param partition partition key, e.g., "a=1/b=2"
+   * @param uri partition location URI
+   * @param format partition format, avro or parquet
+   * @return a seq of [[SparkDataFile]]
+   */
+  def listPartition(
+      conf: Configuration,
+      partition: Map[String, String],
+      uri: String,
+      format: String): Seq[SparkDataFile] = {
     if (format.contains("avro")) {
-      listAvroPartition(partition, uri)
+      listAvroPartition(conf, partition, uri)
     } else if (format.contains("parquet")) {
-      listParquetPartition(partition, uri)
+      listParquetPartition(conf, partition, uri)
     } else if (format.contains("orc")) {
-      listOrcPartition(partition, uri)
+      listOrcPartition(conf, partition, uri)
     } else {
       throw new UnsupportedOperationException(s"Unknown partition format: $format")
     }
   }
 
-  /**
-   * Case class representing a data file.
-   */
-  case class SparkDataFile(
-      path: String,
-      partition: collection.Map[String, String],
-      format: String,
-      fileSize: Long,
-      rowGroupSize: Long,
-      rowCount: Long,
-      columnSizes: Array[Long],
-      valueCounts: Array[Long],
-      nullValueCounts: Array[Long],
-      lowerBounds: Seq[Array[Byte]],
-      upperBounds: Seq[Array[Byte]]
-    ) {
+  private def listAvroPartition(
+      conf: Configuration,
+      partitionPath: Map[String, String],
+      partitionUri: String): Seq[SparkDataFile] = {
+    if (conf == null) {
+      val conf = new Configuration()
+    }
+    val partition = new Path(partitionUri)
+    val fs = partition.getFileSystem(conf)
 
-    /**
-     * Convert this to a [[DataFile]] that can be added to a [[org.apache.iceberg.Table]].
-     *
-     * @param spec a [[PartitionSpec]] that will be used to parse the partition key
-     * @return a [[DataFile]] that can be passed to [[org.apache.iceberg.AppendFiles]]
-     */
-    def toDataFile(spec: PartitionSpec): DataFile = {
-      // values are strings, so pass a path to let the builder coerce to the right types
-      val partitionKey = spec.fields.asScala.map(_.name).map { name =>
-        s"$name=${partition(name)}"
-      }.mkString("/")
+    fs.listStatus(partition, HiddenPathFilter).filter(_.isFile).map { stat =>
+      SparkDataFile(
+        stat.getPath.toString,
+        partitionPath, "avro", stat.getLen,
+        stat.getBlockSize,
+        -1,
+        null,
+        null,
+        null,
+        null,
+        null)
+    }
+  }
 
-      DataFiles.builder(spec)
-          .withPath(path)
-          .withFormat(format)
-          .withPartitionPath(partitionKey)
-          .withFileSizeInBytes(fileSize)
-          .withMetrics(new Metrics(rowCount,
-            arrayToMap(columnSizes),
-            arrayToMap(valueCounts),
-            arrayToMap(nullValueCounts),
-            arrayToMap(lowerBounds),
-            arrayToMap(upperBounds)))
-          .build()
+  //noinspection ScalaDeprecation
+  private def listParquetPartition(
+      conf: Configuration,
+      partitionPath: Map[String, String],
+      partitionUri: String): Seq[SparkDataFile] = {
+    if (conf == null) {
+      val conf = new Configuration()
+    }
+    val partition = new Path(partitionUri)
+    val fs = partition.getFileSystem(conf)
+
+    fs.listStatus(partition, HiddenPathFilter).filter(_.isFile).map { stat =>
+      val metrics = ParquetUtil.footerMetrics(ParquetFileReader.readFooter(conf, stat))
+
+      SparkDataFile(
+        stat.getPath.toString,
+        partitionPath, "parquet", stat.getLen,
+        stat.getBlockSize,
+        metrics.recordCount,
+        mapToArray(metrics.columnSizes),
+        mapToArray(metrics.valueCounts),
+        mapToArray(metrics.nullValueCounts),
+        bytesMapToArray(metrics.lowerBounds),
+        bytesMapToArray(metrics.upperBounds))
+    }
+  }
+
+  private def listOrcPartition(
+      conf: Configuration,
+      partitionPath: Map[String, String],
+      partitionUri: String): Seq[SparkDataFile] = {
+    if (conf == null) {
+      val conf = new Configuration()
+    }
+    val partition = new Path(partitionUri)
+    val fs = partition.getFileSystem(conf)
+
+    fs.listStatus(partition, HiddenPathFilter).filter(_.isFile).map { stat =>
+      val metrics = OrcMetrics.fromInputFile(HadoopInputFile.fromPath(stat.getPath, conf))
+
+      SparkDataFile(
+        stat.getPath.toString,
+        partitionPath, "orc", stat.getLen,
+        stat.getBlockSize,
+        metrics.recordCount,
+        mapToArray(metrics.columnSizes),
+        mapToArray(metrics.valueCounts),
+        mapToArray(metrics.nullValueCounts),
+        bytesMapToArray(metrics.lowerBounds()),
+        bytesMapToArray(metrics.upperBounds())
+      )
     }
   }
 
@@ -138,7 +206,7 @@ object SparkTableUtil {
         val copy = if (buffer.hasArray) {
           val bytes = buffer.array()
           if (buffer.arrayOffset() == 0 && buffer.position() == 0 &&
-              bytes.length == buffer.remaining()) {
+            bytes.length == buffer.remaining()) {
             bytes
           } else {
             val start = buffer.arrayOffset() + buffer.position()
@@ -176,6 +244,33 @@ object SparkTableUtil {
     }
   }
 
+  def getPartitions(spark: SparkSession, rootPath: Path): Seq[Partition] = {
+    val fileStatusCache = FileStatusCache.getOrCreate(spark)
+    val fileIndex = new InMemoryFileIndex(spark, Seq(rootPath), Map.empty, None, fileStatusCache)
+    val spec = fileIndex.partitionSpec
+    val schema = spec.partitionColumns
+    spec.partitions.map { p =>
+      val values = mutable.Map.empty[String, String]
+      schema.foreach { field =>
+        val fieldIndex = schema.fieldIndex(field.name)
+        val catalystValue = p.values.get(fieldIndex, field.dataType)
+        val value = CatalystTypeConverters.convertToScala(catalystValue, field.dataType)
+        values.update(field.name, value.toString)
+      }
+      Partition(values.toMap, p.path.toString)
+    }
+  }
+
+  def partitionFiles(spark: SparkSession, rootPath: Path, format: String): Seq[SparkDataFile] = {
+
+    val partitions = getPartitions(spark, rootPath)
+    var dataFiles: Seq[SparkDataFile] = Seq()
+    partitions.foreach { partition =>
+      dataFiles ++= listPartition(spark.sparkContext.hadoopConfiguration, partition.values, partition.uri, format)
+    }
+    dataFiles
+  }
+
   private def arrayToMap(arr: Seq[Array[Byte]]): java.util.Map[Integer, ByteBuffer] = {
     if (arr != null) {
       val map: java.util.Map[Integer, ByteBuffer] = Maps.newHashMap()
@@ -202,79 +297,70 @@ object SparkTableUtil {
     }
   }
 
-  private object HiddenPathFilter extends PathFilter {
-    override def accept(p: Path): Boolean = {
-      !p.getName.startsWith("_") && !p.getName.startsWith(".")
-    }
-  }
-
   private def listAvroPartition(
       partitionPath: Map[String, String],
       partitionUri: String): Seq[SparkDataFile] = {
-    val conf = new Configuration()
-    val partition = new Path(partitionUri)
-    val fs = partition.getFileSystem(conf)
 
-    fs.listStatus(partition, HiddenPathFilter).filter(_.isFile).map { stat =>
-      SparkDataFile(
-        stat.getPath.toString,
-        partitionPath, "avro", stat.getLen,
-        stat.getBlockSize,
-        -1,
-        null,
-        null,
-        null,
-        null,
-        null)
-    }
+    listAvroPartition(null, partitionPath, partitionUri)
   }
 
   //noinspection ScalaDeprecation
   private def listParquetPartition(
       partitionPath: Map[String, String],
       partitionUri: String): Seq[SparkDataFile] = {
-    val conf = new Configuration()
-    val partition = new Path(partitionUri)
-    val fs = partition.getFileSystem(conf)
 
-    fs.listStatus(partition, HiddenPathFilter).filter(_.isFile).map { stat =>
-      val metrics = ParquetUtil.footerMetrics(ParquetFileReader.readFooter(conf, stat))
+    listParquetPartition(null, partitionPath, partitionUri)
+  }
 
-      SparkDataFile(
-        stat.getPath.toString,
-        partitionPath, "parquet", stat.getLen,
-        stat.getBlockSize,
-        metrics.recordCount,
-        mapToArray(metrics.columnSizes),
-        mapToArray(metrics.valueCounts),
-        mapToArray(metrics.nullValueCounts),
-        bytesMapToArray(metrics.lowerBounds),
-        bytesMapToArray(metrics.upperBounds))
+  /**
+   * Case class representing a data file.
+   */
+  case class SparkDataFile(
+      path: String,
+      partition: collection.Map[String, String],
+      format: String,
+      fileSize: Long,
+      rowGroupSize: Long,
+      rowCount: Long,
+      columnSizes: Array[Long],
+      valueCounts: Array[Long],
+      nullValueCounts: Array[Long],
+      lowerBounds: Seq[Array[Byte]],
+      upperBounds: Seq[Array[Byte]]
+  ) {
+
+    /**
+     * Convert this to a [[DataFile]] that can be added to a [[org.apache.iceberg.Table]].
+     *
+     * @param spec a [[PartitionSpec]] that will be used to parse the partition key
+     * @return a [[DataFile]] that can be passed to [[org.apache.iceberg.AppendFiles]]
+     */
+    def toDataFile(spec: PartitionSpec): DataFile = {
+      // values are strings, so pass a path to let the builder coerce to the right types
+      val partitionKey = spec.fields.asScala.map(_.name).map { name =>
+        s"$name=${partition(name)}"
+      }.mkString("/")
+
+      DataFiles.builder(spec)
+        .withPath(path)
+        .withFormat(format)
+        .withPartitionPath(partitionKey)
+        .withFileSizeInBytes(fileSize)
+        .withMetrics(new Metrics(rowCount,
+          arrayToMap(columnSizes),
+          arrayToMap(valueCounts),
+          arrayToMap(nullValueCounts),
+          arrayToMap(lowerBounds),
+          arrayToMap(upperBounds)))
+        .build()
     }
   }
 
-  private def listOrcPartition(
-      partitionPath: Map[String, String],
-      partitionUri: String): Seq[SparkDataFile] = {
-    val conf = new Configuration()
-    val partition = new Path(partitionUri)
-    val fs = partition.getFileSystem(conf)
+  case class Partition(values: Map[String, String], uri: String)
 
-    fs.listStatus(partition, HiddenPathFilter).filter(_.isFile).map { stat =>
-      val metrics = OrcMetrics.fromInputFile(HadoopInputFile.fromPath(stat.getPath, conf))
-
-      SparkDataFile(
-        stat.getPath.toString,
-        partitionPath, "orc", stat.getLen,
-        stat.getBlockSize,
-        metrics.recordCount,
-        mapToArray(metrics.columnSizes),
-        mapToArray(metrics.valueCounts),
-        mapToArray(metrics.nullValueCounts),
-        bytesMapToArray(metrics.lowerBounds()),
-        bytesMapToArray(metrics.upperBounds())
-      )
+  private object HiddenPathFilter extends PathFilter {
+    override def accept(p: Path): Boolean = {
+      !p.getName.startsWith("_") && !p.getName.startsWith(".")
     }
   }
 }
-
