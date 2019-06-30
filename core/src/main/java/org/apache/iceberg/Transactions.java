@@ -17,42 +17,24 @@
  * under the License.
  */
 
-.navbar-brand:before {
-  content: '';
-  display: block;
-  background: url("/img/favicon-96x96.png") no-repeat;
-  background-size: cover;
-  width: 1.3em;
-  height: 1.3em;
-  margin-left: -1.6em;
-  float: left;
-}
+package org.apache.iceberg;
 
-.floating {
-  float: right;
-}
+import com.google.common.base.Preconditions;
 
-.headerlink {
-  padding-left: 1em;
-  opacity: 0;
-}
+public final class Transactions {
+  private Transactions() {}
 
-h2:target .headerlink {
-  color: #008cba;
-  opacity: 1;
-}
+  public static Transaction replaceTableTransaction(TableOperations ops, TableMetadata start) {
+    return new BaseTransaction(ops, start);
+  }
 
-h3:target .headerlink {
-  color: #008cba;
-  opacity: 1;
-}
+  public static Transaction createTableTransaction(TableOperations ops, TableMetadata start) {
+    Preconditions.checkArgument(ops.current() == null,
+            "Cannot start create table transaction: table already exists");
+    return new BaseTransaction(ops, start);
+  }
 
-h4:target .headerlink {
-  color: #008cba;
-  opacity: 1;
-}
-
-h5:target .headerlink {
-  color: #008cba;
-  opacity: 1;
+  public static Transaction newTransaction(TableOperations ops) {
+    return new BaseTransaction(ops, ops.refresh());
+  }
 }
