@@ -146,6 +146,16 @@ public class HiveTableOperations extends BaseMetastoreTableOperations {
         tbl.getParameters().put("EXTERNAL", "TRUE"); // using the external table type also requires this
       }
 
+      // We need to persist `pdt.` and `spark.sql.sources.` properties in HMS for PDT tables
+      Map<String, String> tableParams = tbl.getParameters();
+      List<String> existingPdtParams = tableParams.keySet().stream()
+          .filter(key -> key.startsWith("pdt.") || key.startsWith("spark.sql.sources."))
+          .collect(Collectors.toList());
+      existingPdtParams.forEach(tableParams::remove);
+      metadata.properties().entrySet().stream()
+          .filter(entry -> entry.getKey().startsWith("pdt.") || entry.getKey().startsWith("spark.sql.sources."))
+          .forEach(entry -> tableParams.put(entry.getKey(), entry.getValue()));
+
       tbl.setSd(storageDescriptor(metadata)); // set to pickup any schema changes
       final String metadataLocation = tbl.getParameters().get(METADATA_LOCATION_PROP);
       if (!Objects.equals(currentMetadataLocation(), metadataLocation)) {
@@ -212,6 +222,7 @@ public class HiveTableOperations extends BaseMetastoreTableOperations {
     storageDescriptor.setInputFormat("org.apache.hadoop.mapred.FileOutputFormat");
     SerDeInfo serDeInfo = new SerDeInfo();
     serDeInfo.setSerializationLib("org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe");
+    serDeInfo.putToParameters("path", metadata.location());
     storageDescriptor.setSerdeInfo(serDeInfo);
     return storageDescriptor;
   }
