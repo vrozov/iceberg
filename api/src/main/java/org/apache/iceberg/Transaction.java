@@ -99,6 +99,13 @@ public interface Transaction {
   OverwriteFiles newOverwrite();
 
   /**
+   * Create a new {@link ModifyFiles modify API} to modify files in this table.
+   *
+   * @return a new {@link ModifyFiles}
+   */
+  ModifyFiles newModify();
+
+  /**
    * Not recommended: Create a new {@link ReplacePartitions replace partitions API} to dynamically
    * overwrite partitions in the table with new data.
    * <p>

@@ -129,6 +129,11 @@ public class BaseTable implements Table, HasTableOperations {
   }
 
   @Override
+  public ModifyFiles newModify() {
+    return new DefaultModifyFiles(ops);
+  }
+
+  @Override
   public ReplacePartitions newReplacePartitions() {
     return new ReplacePartitionsOperation(ops);
   }

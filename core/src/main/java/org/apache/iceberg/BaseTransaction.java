@@ -173,6 +173,14 @@ class BaseTransaction implements Transaction {
   }
 
   @Override
+  public ModifyFiles newModify() {
+    checkLastOperationCommitted("ModifyFiles");
+    ModifyFiles modify = new DefaultModifyFiles(transactionOps);
+    updates.add(modify);
+    return modify;
+  }
+
+  @Override
   public ReplacePartitions newReplacePartitions() {
     checkLastOperationCommitted("ReplacePartitions");
     ReplacePartitionsOperation replacePartitions = new ReplacePartitionsOperation(transactionOps);
@@ -418,6 +426,11 @@ class BaseTransaction implements Transaction {
     @Override
     public OverwriteFiles newOverwrite() {
       return BaseTransaction.this.newOverwrite();
+    }
+
+    @Override
+    public ModifyFiles newModify() {
+      return BaseTransaction.this.newModify();
     }
 
     @Override

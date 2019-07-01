@@ -52,6 +52,13 @@ public class DataOperations {
   public static final String OVERWRITE = "overwrite";
 
   /**
+   * Files are removed, replaced or modified, while changing the data in the table.
+   * <p>
+   * This operation is implemented by {@link ModifyFiles}.
+   */
+  public static final String MODIFY = "modify";
+
+  /**
    * Data is deleted from the table and no data is added.
    * <p>
    * This operation is implemented by {@link DeleteFiles}.
