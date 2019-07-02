@@ -17,42 +17,25 @@
  * under the License.
  */
 
-.navbar-brand:before {
-  content: '';
-  display: block;
-  background: url("/img/favicon-96x96.png") no-repeat;
-  background-size: cover;
-  width: 1.3em;
-  height: 1.3em;
-  margin-left: -1.6em;
-  float: left;
-}
+package org.apache.iceberg.hive;
 
-.floating {
-  float: right;
-}
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
+import com.google.common.base.Preconditions;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.hive.conf.HiveConf;
 
-.headerlink {
-  padding-left: 1em;
-  opacity: 0;
-}
+public final class HiveCatalogs {
 
-h2:target .headerlink {
-  color: #008cba;
-  opacity: 1;
-}
+  private static final Cache<String, HiveCatalog> CATALOG_CACHE = Caffeine.newBuilder()
+      .weakValues()
+      .build();
 
-h3:target .headerlink {
-  color: #008cba;
-  opacity: 1;
-}
+  private HiveCatalogs() {}
 
-h4:target .headerlink {
-  color: #008cba;
-  opacity: 1;
-}
-
-h5:target .headerlink {
-  color: #008cba;
-  opacity: 1;
+  public static HiveCatalog loadCatalog(Configuration conf) {
+    String metastoreUri = conf.get(HiveConf.ConfVars.METASTOREURIS.varname);
+    Preconditions.checkNotNull(metastoreUri, "Metastore URI is not set: hive.metastore.uris=null");
+    return CATALOG_CACHE.get(metastoreUri, uri -> new HiveCatalog(conf));
+  }
 }
