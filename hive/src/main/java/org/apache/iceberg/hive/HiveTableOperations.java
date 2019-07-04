@@ -123,7 +123,9 @@ public class HiveTableOperations extends BaseMetastoreTableOperations {
 
   @Override
   protected void doCommit(TableMetadata base, TableMetadata metadata) {
-    String newMetadataLocation = writeNewMetadata(metadata, currentVersion() + 1);
+    String newMetadataLocation = metadata.file() == null ?
+        writeNewMetadata(metadata, currentVersion() + 1) :
+        metadata.file().location();
 
     boolean threw = true;
     Optional<Long> lockId = Optional.empty();
