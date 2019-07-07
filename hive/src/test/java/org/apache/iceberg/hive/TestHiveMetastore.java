@@ -108,7 +108,7 @@ public class TestHiveMetastore {
   }
 
   private HiveConf newHiveConf(int port) {
-    HiveConf newHiveConf = new HiveConf(new Configuration(), HiveTableBaseTest.class);
+    HiveConf newHiveConf = new HiveConf(new Configuration(), TestHiveMetastore.class);
     newHiveConf.set(HiveConf.ConfVars.METASTOREURIS.varname, "thrift://localhost:" + port);
     newHiveConf.set(HiveConf.ConfVars.METASTOREWAREHOUSE.varname, "file:" + hiveLocalDir.getAbsolutePath());
     return newHiveConf;
