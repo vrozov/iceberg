@@ -119,7 +119,9 @@ public class HiveTableOperations extends BaseMetastoreTableOperations {
       return;
     }
 
-    String newMetadataLocation = writeNewMetadata(metadata, currentVersion() + 1);
+    String newMetadataLocation = metadata.file() == null ?
+        writeNewMetadata(metadata, currentVersion() + 1) :
+        metadata.file().location();
 
     boolean threw = true;
     Optional<Long> lockId = Optional.empty();
@@ -164,6 +166,7 @@ public class HiveTableOperations extends BaseMetastoreTableOperations {
         throw new CommitFailedException(errMsg);
       }
 
+      setPdtParameters(metadata.properties(), tbl);
       setParameters(newMetadataLocation, tbl);
 
       if (base != null) {
@@ -194,6 +197,18 @@ public class HiveTableOperations extends BaseMetastoreTableOperations {
     }
 
     requestRefresh();
+  }
+
+  private void setPdtParameters(Map<String, String> tableProperties, Table tbl) {
+    // We need to persist `pdt.` and `spark.sql.sources.` properties in HMS for PDT tables
+    Map<String, String> parameters = tbl.getParameters();
+    List<String> existingPdtParams = parameters.keySet().stream()
+        .filter(key -> key.startsWith("pdt.") || key.startsWith("spark.sql.sources."))
+        .collect(Collectors.toList());
+    existingPdtParams.forEach(parameters::remove);
+    tableProperties.entrySet().stream()
+        .filter(entry -> entry.getKey().startsWith("pdt.") || entry.getKey().startsWith("spark.sql.sources."))
+        .forEach(entry -> parameters.put(entry.getKey(), entry.getValue()));
   }
 
   private void setParameters(String newMetadataLocation, Table tbl) {

@@ -21,7 +21,6 @@ package org.apache.iceberg.hive;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
-import com.google.common.base.Preconditions;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hive.conf.HiveConf;
 
@@ -34,8 +33,8 @@ public final class HiveCatalogs {
   private HiveCatalogs() {}
 
   public static HiveCatalog loadCatalog(Configuration conf) {
-    String metastoreUri = conf.get(HiveConf.ConfVars.METASTOREURIS.varname);
-    Preconditions.checkNotNull(metastoreUri, "Metastore URI is not set: hive.metastore.uris=null");
+    // metastore URI can be null in local mode
+    String metastoreUri = conf.get(HiveConf.ConfVars.METASTOREURIS.varname, "");
     return CATALOG_CACHE.get(metastoreUri, uri -> new HiveCatalog(conf));
   }
 }
