@@ -217,7 +217,7 @@ public class Reader implements DataSourceReader, SupportsPushDownFilters, Suppor
     return new Stats(sizeInBytes, numRows);
   }
 
-  private List<CombinedScanTask> tasks() {
+  protected List<CombinedScanTask> tasks() {
     if (tasks == null) {
       TableScan scan = table
           .newScan()
