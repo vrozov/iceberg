@@ -116,21 +116,21 @@ public class IcebergSource implements DataSourceV2, ReadSupport, WriteSupport, D
     }
   }
 
-  private SparkSession lazySparkSession() {
+  protected SparkSession lazySparkSession() {
     if (lazySpark == null) {
       this.lazySpark = SparkSession.builder().getOrCreate();
     }
     return lazySpark;
   }
 
-  private Configuration lazyBaseConf() {
+  protected Configuration lazyBaseConf() {
     if (lazyConf == null) {
       this.lazyConf = lazySparkSession().sparkContext().hadoopConfiguration();
     }
     return lazyConf;
   }
 
-  private Table getTableAndResolveHadoopConfiguration(
+  protected Table getTableAndResolveHadoopConfiguration(
       DataSourceOptions options, Configuration conf) {
     // Overwrite configurations from the Spark Context with configurations from the options.
     mergeIcebergHadoopConfs(conf, options.asMap());
@@ -142,14 +142,14 @@ public class IcebergSource implements DataSourceV2, ReadSupport, WriteSupport, D
     return table;
   }
 
-  private static void mergeIcebergHadoopConfs(
+  protected static void mergeIcebergHadoopConfs(
       Configuration baseConf, Map<String, String> options) {
     options.keySet().stream()
         .filter(key -> key.startsWith("hadoop."))
         .forEach(key -> baseConf.set(key.replaceFirst("hadoop.", ""), options.get(key)));
   }
 
-  private void validateWriteSchema(Schema tableSchema, StructType dsStruct) {
+  protected void validateWriteSchema(Schema tableSchema, StructType dsStruct) {
     Schema dsSchema = SparkSchemaUtil.convert(tableSchema, dsStruct);
     List<String> errors = CheckCompatibility.writeCompatibilityErrors(tableSchema, dsSchema);
     if (!errors.isEmpty()) {

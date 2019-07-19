@@ -79,7 +79,7 @@ import static org.apache.iceberg.TableProperties.DEFAULT_FILE_FORMAT;
 import static org.apache.iceberg.TableProperties.DEFAULT_FILE_FORMAT_DEFAULT;
 
 // TODO: parameterize DataSourceWriter with subclass of WriterCommitMessage
-class Writer implements DataSourceWriter {
+public class Writer implements DataSourceWriter {
   private static final Logger LOG = LoggerFactory.getLogger(Writer.class);
 
   private final Table table;
@@ -90,7 +90,7 @@ class Writer implements DataSourceWriter {
   private final String applicationId;
   private final String wapId;
 
-  Writer(Table table, DataSourceOptions options, boolean replacePartitions, String applicationId) {
+  public Writer(Table table, DataSourceOptions options, boolean replacePartitions, String applicationId) {
     this(table, options, replacePartitions, applicationId, null);
   }
 
@@ -150,7 +150,7 @@ class Writer implements DataSourceWriter {
     LOG.info("Committed in {} ms", duration);
   }
 
-  private void append(WriterCommitMessage[] messages) {
+  protected void append(WriterCommitMessage[] messages) {
     AppendFiles append = table.newAppend();
 
     int numFiles = 0;
@@ -162,7 +162,7 @@ class Writer implements DataSourceWriter {
     commitOperation(append, numFiles, "append");
   }
 
-  private void replacePartitions(WriterCommitMessage[] messages) {
+  protected void replacePartitions(WriterCommitMessage[] messages) {
     ReplacePartitions dynamicOverwrite = table.newReplacePartitions();
 
     int numFiles = 0;
