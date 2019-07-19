@@ -78,7 +78,7 @@ import static org.apache.iceberg.TableProperties.DEFAULT_FILE_FORMAT;
 import static org.apache.iceberg.TableProperties.DEFAULT_FILE_FORMAT_DEFAULT;
 
 // TODO: parameterize DataSourceWriter with subclass of WriterCommitMessage
-class Writer implements DataSourceWriter {
+public class Writer implements DataSourceWriter {
   private static final Logger LOG = LoggerFactory.getLogger(Writer.class);
 
   private final Table table;
@@ -87,7 +87,7 @@ class Writer implements DataSourceWriter {
   private final EncryptionManager encryptionManager;
   private final boolean replacePartitions;
 
-  Writer(Table table, DataSourceOptions options, boolean replacePartitions) {
+  public Writer(Table table, DataSourceOptions options, boolean replacePartitions) {
     this.table = table;
     this.format = getFileFormat(table.properties(), options);
     this.fileIo = table.io();
@@ -95,7 +95,7 @@ class Writer implements DataSourceWriter {
     this.replacePartitions = replacePartitions;
   }
 
-  private FileFormat getFileFormat(Map<String, String> tableProperties, DataSourceOptions options) {
+  protected FileFormat getFileFormat(Map<String, String> tableProperties, DataSourceOptions options) {
     Optional<String> formatOption = options.get("write-format");
     String formatString = formatOption
         .orElse(tableProperties.getOrDefault(DEFAULT_FILE_FORMAT, DEFAULT_FILE_FORMAT_DEFAULT));
@@ -125,7 +125,7 @@ class Writer implements DataSourceWriter {
     LOG.info("Committed in {} ms", duration);
   }
 
-  private void append(WriterCommitMessage[] messages) {
+  protected void append(WriterCommitMessage[] messages) {
     AppendFiles append = table.newAppend();
 
     int numFiles = 0;
@@ -137,7 +137,7 @@ class Writer implements DataSourceWriter {
     commitOperation(append, numFiles, "append");
   }
 
-  private void replacePartitions(WriterCommitMessage[] messages) {
+  protected void replacePartitions(WriterCommitMessage[] messages) {
     ReplacePartitions dynamicOverwrite = table.newReplacePartitions();
 
     int numFiles = 0;
@@ -192,7 +192,7 @@ class Writer implements DataSourceWriter {
   }
 
 
-  private static class TaskCommit implements WriterCommitMessage {
+  protected static class TaskCommit implements WriterCommitMessage {
     private final DataFile[] files;
 
     TaskCommit() {
@@ -212,7 +212,7 @@ class Writer implements DataSourceWriter {
     }
   }
 
-  private static class WriterFactory implements DataWriterFactory<InternalRow> {
+  protected static class WriterFactory implements DataWriterFactory<InternalRow> {
     private final PartitionSpec spec;
     private final FileFormat format;
     private final LocationProvider locations;
@@ -280,11 +280,11 @@ class Writer implements DataSourceWriter {
     }
   }
 
-  private interface AppenderFactory<T> {
+  protected interface AppenderFactory<T> {
     FileAppender<T> newAppender(OutputFile file, FileFormat format);
   }
 
-  private static class UnpartitionedWriter implements DataWriter<InternalRow>, Closeable {
+  protected static class UnpartitionedWriter implements DataWriter<InternalRow>, Closeable {
     private final FileIO fileIo;
     private FileAppender<InternalRow> appender = null;
     private Metrics metrics = null;
@@ -342,7 +342,7 @@ class Writer implements DataSourceWriter {
     }
   }
 
-  private static class PartitionedWriter implements DataWriter<InternalRow> {
+  protected static class PartitionedWriter implements DataWriter<InternalRow> {
     private final Set<PartitionKey> completedPartitions = Sets.newHashSet();
     private final List<DataFile> completedFiles = Lists.newArrayList();
     private final PartitionSpec spec;

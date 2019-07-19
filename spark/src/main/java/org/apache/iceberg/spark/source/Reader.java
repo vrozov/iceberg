@@ -89,7 +89,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import scala.collection.JavaConverters;
 
-class Reader implements DataSourceReader, SupportsPushDownFilters, SupportsPushDownRequiredColumns,
+public class Reader implements DataSourceReader, SupportsPushDownFilters, SupportsPushDownRequiredColumns,
     SupportsReportStatistics {
   private static final Logger LOG = LoggerFactory.getLogger(Reader.class);
 
@@ -110,7 +110,7 @@ class Reader implements DataSourceReader, SupportsPushDownFilters, SupportsPushD
   private StructType type = null; // cached because Spark accesses it multiple times
   private List<CombinedScanTask> tasks = null; // lazy cache of tasks
 
-  Reader(Table table, boolean caseSensitive, DataSourceOptions options) {
+  public Reader(Table table, boolean caseSensitive, DataSourceOptions options) {
     this.table = table;
     this.snapshotId = options.get("snapshot-id").map(Long::parseLong).orElse(null);
     this.asOfTimestamp = options.get("as-of-timestamp").map(Long::parseLong).orElse(null);
@@ -124,7 +124,7 @@ class Reader implements DataSourceReader, SupportsPushDownFilters, SupportsPushD
     this.caseSensitive = caseSensitive;
   }
 
-  private Schema lazySchema() {
+  protected Schema lazySchema() {
     if (schema == null) {
       if (requestedSchema != null) {
         this.schema = SparkSchemaUtil.prune(table.schema(), requestedSchema);
@@ -135,7 +135,7 @@ class Reader implements DataSourceReader, SupportsPushDownFilters, SupportsPushD
     return schema;
   }
 
-  private StructType lazyType() {
+  protected StructType lazyType() {
     if (type == null) {
       this.type = SparkSchemaUtil.convert(lazySchema());
     }
@@ -255,7 +255,7 @@ class Reader implements DataSourceReader, SupportsPushDownFilters, SupportsPushD
         table, lazySchema().asStruct(), filterExpressions, caseSensitive);
   }
 
-  private static class ReadTask implements InputPartition<InternalRow>, Serializable {
+  protected static class ReadTask implements InputPartition<InternalRow>, Serializable {
     private final CombinedScanTask task;
     private final String tableSchemaString;
     private final String expectedSchemaString;
@@ -298,7 +298,7 @@ class Reader implements DataSourceReader, SupportsPushDownFilters, SupportsPushD
     }
   }
 
-  private static class TaskDataReader implements InputPartitionReader<InternalRow> {
+  protected static class TaskDataReader implements InputPartitionReader<InternalRow> {
     // for some reason, the apply method can't be called from Java without reflection
     private static final DynMethods.UnboundMethod APPLY_PROJECTION = DynMethods.builder("apply")
         .impl(UnsafeProjection.class, InternalRow.class)
@@ -498,7 +498,7 @@ class Reader implements DataSourceReader, SupportsPushDownFilters, SupportsPushD
     }
   }
 
-  private static class PartitionRowConverter implements Function<StructLike, InternalRow> {
+  protected static class PartitionRowConverter implements Function<StructLike, InternalRow> {
     private final DataType[] types;
     private final int[] positions;
     private final Class<?>[] javaTypes;
@@ -562,7 +562,7 @@ class Reader implements DataSourceReader, SupportsPushDownFilters, SupportsPushD
     }
   }
 
-  private static class StructLikeInternalRow implements StructLike {
+  protected static class StructLikeInternalRow implements StructLike {
     private final DataType[] types;
     private InternalRow row = null;
 
