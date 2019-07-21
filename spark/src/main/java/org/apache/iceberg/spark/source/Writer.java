@@ -221,7 +221,7 @@ public class Writer implements DataSourceWriter {
     private final FileIO fileIo;
     private final EncryptionManager encryptionManager;
 
-    WriterFactory(PartitionSpec spec, FileFormat format, LocationProvider locations,
+    protected WriterFactory(PartitionSpec spec, FileFormat format, LocationProvider locations,
                   Map<String, String> properties, FileIO fileIo, EncryptionManager encryptionManager) {
       this.spec = spec;
       this.format = format;
@@ -291,7 +291,7 @@ public class Writer implements DataSourceWriter {
     private List<Long> offsetRanges = null;
     private final EncryptedOutputFile file;
 
-    UnpartitionedWriter(
+    protected UnpartitionedWriter(
         EncryptedOutputFile outputFile,
         FileFormat format,
         AppenderFactory<InternalRow> factory,
@@ -356,7 +356,7 @@ public class Writer implements DataSourceWriter {
     private FileAppender<InternalRow> currentAppender = null;
     private EncryptedOutputFile currentFile = null;
 
-    PartitionedWriter(
+    protected PartitionedWriter(
         PartitionSpec spec,
         FileFormat format,
         AppenderFactory<InternalRow> factory,

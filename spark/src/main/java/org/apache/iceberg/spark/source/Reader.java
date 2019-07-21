@@ -266,7 +266,7 @@ public class Reader implements DataSourceReader, SupportsPushDownFilters, Suppor
     private transient Schema tableSchema = null;
     private transient Schema expectedSchema = null;
 
-    private ReadTask(
+    protected ReadTask(
         CombinedScanTask task, String tableSchemaString, String expectedSchemaString, FileIO fileIo,
         EncryptionManager encryptionManager, boolean caseSensitive) {
       this.task = task;
@@ -315,7 +315,7 @@ public class Reader implements DataSourceReader, SupportsPushDownFilters, Suppor
     private Closeable currentCloseable = null;
     private InternalRow current = null;
 
-    TaskDataReader(CombinedScanTask task, Schema tableSchema, Schema expectedSchema, FileIO fileIo,
+    protected TaskDataReader(CombinedScanTask task, Schema tableSchema, Schema expectedSchema, FileIO fileIo,
                    EncryptionManager encryptionManager, boolean caseSensitive) {
       this.fileIo = fileIo;
       this.tasks = task.files().iterator();
