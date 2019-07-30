@@ -568,4 +568,33 @@ public class TestTransaction extends TableTestBase {
     List<ManifestFile> manifests = table.currentSnapshot().manifests();
     Assert.assertEquals("Expected 2 manifests", 2, manifests.size());
   }
+
+  @Test
+  public void testTransactionScan() {
+    Transaction txn = table.newTransaction();
+
+    table.newFastAppend()
+        .appendFile(FILE_B)
+        .commit();
+
+    txn.newFastAppend()
+        .appendFile(FILE_A)
+        .commit();
+
+    // check that the transaction doesn't see FILE_B that was added concurrently
+    List<ManifestFile> transactionManifests = txn.table().currentSnapshot().manifests();
+    Assert.assertEquals(1, transactionManifests.size());
+    validateManifest(transactionManifests.get(0), ids(2L), files(FILE_A));
+    Assert.assertEquals(1, Iterables.size(txn.table().newScan().planFiles()));
+
+    // check that FILE_A is not visible before the transaction is committed
+    Assert.assertEquals(1, Iterables.size(table.newScan().planFiles()));
+
+    txn.commitTransaction();
+
+    // verify that we see both files after the transaction is committed
+    List<ManifestFile> manifests = table.currentSnapshot().manifests();
+    Assert.assertEquals(2, manifests.size());
+    Assert.assertEquals(2, Iterables.size(table.newScan().planFiles()));
+  }
 }

@@ -130,7 +130,9 @@ public class BaseTable implements Table, HasTableOperations {
 
   @Override
   public ModifyFiles newModify() {
-    return new DefaultModifyFiles(ops);
+    Snapshot currentSnapshot = ops.current().currentSnapshot();
+    Long snapshotId = currentSnapshot != null ? currentSnapshot.snapshotId() : null;
+    return new DefaultModifyFiles(ops, snapshotId);
   }
 
   @Override

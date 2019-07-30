@@ -44,7 +44,7 @@ public class StreamingWriter extends Writer implements StreamWriter {
   private final OutputMode mode;
 
   StreamingWriter(Table table, DataSourceOptions options, String queryId, OutputMode mode) {
-    super(table, options, false);
+    super(table, options, CommitFunctions.Append.get());
     this.queryId = queryId;
     this.mode = mode;
   }
@@ -83,7 +83,11 @@ public class StreamingWriter extends Writer implements StreamWriter {
   private <T> void commit(SnapshotUpdate<T> snapshotUpdate, long epochId, int numFiles, String description) {
     snapshotUpdate.set(QUERY_ID_PROPERTY, queryId);
     snapshotUpdate.set(EPOCH_ID_PROPERTY, Long.toString(epochId));
-    commitOperation(snapshotUpdate, numFiles, description);
+    LOG.info("Committing {} with {} files to table {}", description, numFiles, table());
+    long start = System.currentTimeMillis();
+    snapshotUpdate.commit();
+    long duration = System.currentTimeMillis() - start;
+    LOG.info("Committed in {} ms", duration);
   }
 
   @Override

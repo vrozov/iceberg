@@ -20,7 +20,7 @@
 package org.apache.iceberg;
 
 import com.google.common.base.Preconditions;
-import com.google.common.collect.Iterators;
+import com.google.common.collect.Iterables;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -32,13 +32,12 @@ import org.apache.iceberg.expressions.Projections;
 
 public class DefaultModifyFiles extends MergingSnapshotProducer<ModifyFiles> implements ModifyFiles {
 
-  private boolean validate = false;
-  private Long baseSnapshotId = null;
-  private Expression fileFilter = null;
+  private Long baseSnapshotId;
+  private Expression rowFilter;
 
-  DefaultModifyFiles(TableOperations ops) {
+  DefaultModifyFiles(TableOperations ops, Long baseSnapshotId) {
     super(ops);
-
+    this.baseSnapshotId = baseSnapshotId;
     // modify files must fail if any of the deleted paths is missing and cannot be deleted
     failMissingDeletePaths();
   }
@@ -56,7 +55,7 @@ public class DefaultModifyFiles extends MergingSnapshotProducer<ModifyFiles> imp
   @Override
   public ModifyFiles modifyFiles(Set<DataFile> filesToDelete, Set<DataFile> filesToAdd) {
     Preconditions.checkArgument(filesToDelete != null, "Files to delete cannot be null");
-    Preconditions.checkArgument(filesToAdd != null, "Files to add can not be null");
+    Preconditions.checkArgument(filesToAdd != null, "Files to add cannot be null");
 
     for (DataFile toDelete : filesToDelete) {
       delete(toDelete.path());
@@ -70,61 +69,49 @@ public class DefaultModifyFiles extends MergingSnapshotProducer<ModifyFiles> imp
   }
 
   @Override
-  public ModifyFiles validate(Long snapshotId) {
-    return validate(snapshotId, null);
-  }
-
-  @Override
-  public ModifyFiles validate(Long snapshotId, Expression expr) {
-    this.baseSnapshotId = snapshotId;
-    this.fileFilter = expr;
-    this.validate = true;
+  public ModifyFiles failOnNewFiles(Expression newRowFilter) {
+    Preconditions.checkArgument(newRowFilter != null, "Row filter cannot be null");
+    this.rowFilter = newRowFilter;
     return this;
   }
 
   @Override
   public List<ManifestFile> apply(TableMetadata base) {
-    if (validate) {
-      Long currentId = base.currentSnapshot() == null ? null : base.currentSnapshot().snapshotId();
+    if (rowFilter != null) {
+      PartitionSpec spec = writeSpec();
+      Expression inclusiveExpr = Projections.inclusive(spec).project(rowFilter);
+      Evaluator inclusive = new Evaluator(spec.partitionType(), inclusiveExpr);
 
-      if (fileFilter == null) {
-        ValidationException.check(Objects.equals(baseSnapshotId, currentId),
-            "Modify operation requires no changes to timeline. Base snapshot %s != %s",
-            baseSnapshotId, currentId);
-      } else {
-        PartitionSpec spec = writeSpec();
-        Expression inclusiveExpr = Projections.inclusive(spec).project(fileFilter);
-        Evaluator inclusive = new Evaluator(spec.partitionType(), inclusiveExpr);
-
-        List<DataFile> collectedFiles = collectAddedFilesSince(base, currentId);
-        for (DataFile file : collectedFiles) {
-          ValidationException.check(!inclusive.eval(file.partition()),
-              "Modify operation requires no in-range changes to timeline. File filter %s applies to %s",
-              fileFilter, file.path());
-        }
+      List<DataFile> newFiles = collectNewFiles(base);
+      for (DataFile newFile : newFiles) {
+        // we do partition-level conflict resolution right now
+        // we can enhance it by leveraging column stats and MetricsEvaluator
+        ValidationException.check(!inclusive.eval(newFile.partition()),
+            "Modify operation detected a new file %s that might match %s", newFile.path(), rowFilter);
       }
     }
 
     return super.apply(base);
   }
 
-  private List<DataFile> collectAddedFilesSince(TableMetadata base,
-                                                Long currentSnapshotId) {
-    List<DataFile> collectedFiles = new ArrayList<>();
+  private List<DataFile> collectNewFiles(TableMetadata meta) {
+    Long currentSnapshotId = meta.currentSnapshot() == null ? null : meta.currentSnapshot().snapshotId();
+
+    List<DataFile> newFiles = new ArrayList<>();
 
     Long currentId = currentSnapshotId;
     while (currentId != null && !Objects.equals(currentId, baseSnapshotId)) {
-      Snapshot currentSnapshot = base.snapshot(currentId);
+      Snapshot currentSnapshot = meta.snapshot(currentId);
 
       if (currentSnapshot == null) {
         throw new ValidationException(
-            "Modify operation requires to timeline to be present. Snapshot %d has been expired", currentId);
+            "Modify operation cannot find snapshot %d. Was it expired?", currentId);
       }
 
-      Iterators.addAll(collectedFiles, currentSnapshot.addedFiles().iterator());
+      Iterables.addAll(newFiles, currentSnapshot.addedFiles());
       currentId = currentSnapshot.parentId();
     }
 
-    return collectedFiles;
+    return newFiles;
   }
 }

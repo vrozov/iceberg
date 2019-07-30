@@ -39,35 +39,20 @@ public interface ModifyFiles extends SnapshotUpdate<ModifyFiles> {
   /**
    * Add a modify that replaces one set of files with another set that might contain different data.
    *
-   * @param filesToDelete files that will be replaced (deleted), cannot be null.
-   * @param filesToAdd    files that will be added, cannot be null.
+   * @param filesToDelete files that will be replaced (deleted), cannot be null
+   * @param filesToAdd    files that will be added, cannot be null
    * @return this for method chaining
    */
   ModifyFiles modifyFiles(Set<DataFile> filesToDelete, Set<DataFile> filesToAdd);
 
   /**
-   * Signals validation of the timeline for operations that happened between the base snapshot,
-   * from which data has been read, to the current snapshot, to which data is being written.
-   * <p>
-   * If this method is called the snapshot provide must be the parent of the current snapshot
-   * at commit time, effectively disabling parallel writes.
+   * Enables validation of new files that are added concurrently after the modify operation starts.
    *
-   * @param snapshotId of the base snapshot
+   * If another concurrent operation commits a new file that might contain rows matching
+   * rowFilter expression, the modify operation will detect this during retries and fail.
+   *
+   * @param rowFilter an expression on rows in the table
    * @return this for method chaining
    */
-  ModifyFiles validate(Long snapshotId);
-
-  /**
-   * Signals validation of the timeline for operations that happened between the base snapshot,
-   * from which data has been read, to the current snapshot, to which data is being written.
-   * <p>
-   * If this method is called, each added file on all snapshots between the base snapshot and the
-   * current snapshot are validated to ensure the operation creating the current snapshot wouldn't
-   * affect those new files as well.
-   *
-   * @param snapshotId of the base snapshot
-   * @param expr       an expression on rows in the table
-   * @return this for method chaining
-   */
-  ModifyFiles validate(Long snapshotId, Expression expr);
+  ModifyFiles failOnNewFiles(Expression rowFilter);
 }
