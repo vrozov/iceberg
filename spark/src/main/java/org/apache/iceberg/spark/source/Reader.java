@@ -255,7 +255,7 @@ public class Reader implements DataSourceReader, SupportsPushDownFilters, Suppor
         table, lazySchema().asStruct(), filterExpressions, caseSensitive);
   }
 
-  protected static class ReadTask implements InputPartition<InternalRow>, Serializable {
+  public static class ReadTask implements InputPartition<InternalRow>, Serializable {
     private final CombinedScanTask task;
     private final String tableSchemaString;
     private final String expectedSchemaString;
@@ -266,7 +266,7 @@ public class Reader implements DataSourceReader, SupportsPushDownFilters, Suppor
     private transient Schema tableSchema = null;
     private transient Schema expectedSchema = null;
 
-    protected ReadTask(
+    public ReadTask(
         CombinedScanTask task, String tableSchemaString, String expectedSchemaString, FileIO fileIo,
         EncryptionManager encryptionManager, boolean caseSensitive) {
       this.task = task;

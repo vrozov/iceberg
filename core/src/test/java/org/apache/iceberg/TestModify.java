@@ -20,6 +20,7 @@
 package org.apache.iceberg;
 
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -32,8 +33,6 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
-import static com.google.common.collect.ImmutableSet.of;
-import static java.util.Collections.emptySet;
 import static org.apache.iceberg.types.Types.NestedField.optional;
 import static org.apache.iceberg.types.Types.NestedField.required;
 
@@ -115,63 +114,41 @@ public class TestModify extends TableTestBase {
 
   @Test
   public void testModifyOnEmptyTableNotValidated() {
-    // Given:
-
     Assert.assertNull("Should be empty table", table.currentSnapshot());
 
-    // When:
-
     table.newModify()
-        .modifyFiles(emptySet(), of(FILE_DAY_2_MODIFIED))
+        .modifyFiles(ImmutableSet.of(), ImmutableSet.of(FILE_DAY_2_MODIFIED))
         .commit();
-
-    // Then:
 
     Assert.assertNotNull("Should create a new snapshot", table.currentSnapshot());
   }
 
   @Test
   public void testModifyOnEmptyTableStrictValidated() {
-    // Given:
-
     Assert.assertNull("Should be empty table", table.currentSnapshot());
-    Long baseSnapshotId = null;
-
-    // When:
 
     table.newModify()
-        .modifyFiles(emptySet(), of(FILE_DAY_2_MODIFIED))
-        .validate(baseSnapshotId)
+        .modifyFiles(ImmutableSet.of(), ImmutableSet.of(FILE_DAY_2_MODIFIED))
+        .failOnNewFiles(Expressions.alwaysTrue())
         .commit();
-
-    // Then:
 
     Assert.assertNotNull("Should create a new snapshot", table.currentSnapshot());
   }
 
   @Test
   public void testModifyOnEmptyTableTimelineValidated() {
-    // Given:
-
     Assert.assertNull("Should be empty table", table.currentSnapshot());
-    Long baseSnapshotId = null;
-
-    // When:
 
     table.newModify()
-        .modifyFiles(emptySet(), of(FILE_DAY_2_MODIFIED))
-        .validate(baseSnapshotId, EXPRESSION_DAY_2)
+        .modifyFiles(ImmutableSet.of(), ImmutableSet.of(FILE_DAY_2_MODIFIED))
+        .failOnNewFiles(EXPRESSION_DAY_2)
         .commit();
-
-    // Then:
 
     Assert.assertNotNull("Should create a new snapshot", table.currentSnapshot());
   }
 
   @Test
   public void testModifyTableNotValidated() {
-    // Given:
-
     table.newAppend()
         .appendFile(FILE_DAY_1)
         .appendFile(FILE_DAY_2)
@@ -180,13 +157,9 @@ public class TestModify extends TableTestBase {
     Assert.assertNotNull("Should not be empty table", table.currentSnapshot());
     long baseSnapshotId = table.currentSnapshot().snapshotId();
 
-    // When:
-
     table.newModify()
-        .modifyFiles(of(FILE_DAY_2), of(FILE_DAY_2_MODIFIED))
+        .modifyFiles(ImmutableSet.of(FILE_DAY_2), ImmutableSet.of(FILE_DAY_2_MODIFIED))
         .commit();
-
-    // Then:
 
     Assert.assertNotEquals("Should create a new snapshot",
         baseSnapshotId, table.currentSnapshot().snapshotId());
@@ -194,8 +167,6 @@ public class TestModify extends TableTestBase {
 
   @Test
   public void testModifyTableStrictValidated() {
-    // Given:
-
     table.newAppend()
         .appendFile(FILE_DAY_1)
         .appendFile(FILE_DAY_2)
@@ -204,14 +175,10 @@ public class TestModify extends TableTestBase {
     Assert.assertNotNull("Should not be empty table", table.currentSnapshot());
     long baseSnapshotId = table.currentSnapshot().snapshotId();
 
-    // When:
-
     table.newModify()
-        .modifyFiles(of(FILE_DAY_2), of(FILE_DAY_2_MODIFIED))
-        .validate(baseSnapshotId)
+        .modifyFiles(ImmutableSet.of(FILE_DAY_2), ImmutableSet.of(FILE_DAY_2_MODIFIED))
+        .failOnNewFiles(Expressions.alwaysTrue())
         .commit();
-
-    // Then:
 
     Assert.assertNotEquals("Should create a new snapshot",
         baseSnapshotId, table.currentSnapshot().snapshotId());
@@ -219,8 +186,6 @@ public class TestModify extends TableTestBase {
 
   @Test
   public void testModifyTableTimelineValidated() {
-    // Given:
-
     table.newAppend()
         .appendFile(FILE_DAY_1)
         .appendFile(FILE_DAY_2)
@@ -229,14 +194,10 @@ public class TestModify extends TableTestBase {
     Assert.assertNotNull("Should not be empty table", table.currentSnapshot());
     long baseSnapshotId = table.currentSnapshot().snapshotId();
 
-    // When:
-
     table.newModify()
-        .modifyFiles(of(FILE_DAY_2), of(FILE_DAY_2_MODIFIED))
-        .validate(baseSnapshotId, EXPRESSION_DAY_2)
+        .modifyFiles(ImmutableSet.of(FILE_DAY_2), ImmutableSet.of(FILE_DAY_2_MODIFIED))
+        .failOnNewFiles(EXPRESSION_DAY_2)
         .commit();
-
-    // Then:
 
     Assert.assertNotEquals("Should create a new snapshot",
         baseSnapshotId, table.currentSnapshot().snapshotId());
@@ -244,18 +205,14 @@ public class TestModify extends TableTestBase {
 
   @Test
   public void testModifyCompatibleTableNotValidated() {
-    // Given:
-
     table.newAppend()
         .appendFile(FILE_DAY_2)
         .commit();
 
     Assert.assertNotNull("Should not be empty table", table.currentSnapshot());
 
-    // When:
-
     ModifyFiles modify = table.newModify()
-        .modifyFiles(of(FILE_DAY_2), of(FILE_DAY_2_MODIFIED));
+        .modifyFiles(ImmutableSet.of(FILE_DAY_2), ImmutableSet.of(FILE_DAY_2_MODIFIED));
 
     table.newAppend()
         .appendFile(FILE_DAY_1)
@@ -264,38 +221,29 @@ public class TestModify extends TableTestBase {
 
     modify.commit();
 
-    // Then:
-
     Assert.assertNotEquals("Should create a new snapshot",
         timelineSnapshotId, table.currentSnapshot().snapshotId());
   }
 
   @Test
   public void testModifyCompatibleTableStrictValidated() {
-    // Given:
-
     table.newAppend()
         .appendFile(FILE_DAY_2)
         .commit();
 
     Assert.assertNotNull("Should not be empty table", table.currentSnapshot());
-    long baseSnapshotId = table.currentSnapshot().snapshotId();
-
-    // When:
 
     ModifyFiles modify = table.newModify()
-        .modifyFiles(of(FILE_DAY_2), of(FILE_DAY_2_MODIFIED))
-        .validate(baseSnapshotId);
+        .modifyFiles(ImmutableSet.of(FILE_DAY_2), ImmutableSet.of(FILE_DAY_2_MODIFIED))
+        .failOnNewFiles(Expressions.alwaysTrue());
 
     table.newAppend()
         .appendFile(FILE_DAY_1)
         .commit();
     long timelineSnapshotId = table.currentSnapshot().snapshotId();
 
-    // Then:
-
     AssertHelpers.assertThrows("Should reject commit",
-        ValidationException.class, "Modify operation requires no changes to timeline.",
+        ValidationException.class, "Modify operation detected a new file",
         modify::commit);
 
     Assert.assertEquals("Should not create a new snapshot",
@@ -304,20 +252,15 @@ public class TestModify extends TableTestBase {
 
   @Test
   public void testModifyCompatibleAdditionTableTimelineValidated() {
-    // Given:
-
     table.newAppend()
         .appendFile(FILE_DAY_2)
         .commit();
 
     Assert.assertNotNull("Should not be empty table", table.currentSnapshot());
-    long baseSnapshotId = table.currentSnapshot().snapshotId();
-
-    // When:
 
     ModifyFiles modify = table.newModify()
-        .modifyFiles(of(FILE_DAY_2), of(FILE_DAY_2_MODIFIED))
-        .validate(baseSnapshotId, EXPRESSION_DAY_2);
+        .modifyFiles(ImmutableSet.of(FILE_DAY_2), ImmutableSet.of(FILE_DAY_2_MODIFIED))
+        .failOnNewFiles(EXPRESSION_DAY_2);
 
     table.newAppend()
         .appendFile(FILE_DAY_1)
@@ -326,29 +269,22 @@ public class TestModify extends TableTestBase {
 
     modify.commit();
 
-    // Then:
-
     Assert.assertNotEquals("Should create a new snapshot",
         timelineSnapshotId, table.currentSnapshot().snapshotId());
   }
 
   @Test
   public void testModifyCompatibleDeletionTableTimelineValidated() {
-    // Given:
-
     table.newAppend()
         .appendFile(FILE_DAY_1)
         .appendFile(FILE_DAY_2)
         .commit();
 
     Assert.assertNotNull("Should not be empty table", table.currentSnapshot());
-    long baseSnapshotId = table.currentSnapshot().snapshotId();
-
-    // When:
 
     ModifyFiles modify = table.newModify()
-        .modifyFiles(of(FILE_DAY_2), of(FILE_DAY_2_MODIFIED))
-        .validate(baseSnapshotId, EXPRESSION_DAY_2);
+        .modifyFiles(ImmutableSet.of(FILE_DAY_2), ImmutableSet.of(FILE_DAY_2_MODIFIED))
+        .failOnNewFiles(EXPRESSION_DAY_2);
 
     table.newDelete()
         .deleteFile(FILE_DAY_1)
@@ -357,38 +293,29 @@ public class TestModify extends TableTestBase {
 
     modify.commit();
 
-    // Then:
-
     Assert.assertNotEquals("Should create a new snapshot",
         timelineSnapshotId, table.currentSnapshot().snapshotId());
   }
 
   @Test
   public void testModifyIncompatibleAdditionTableTimelineValidated() {
-    // Given:
-
     table.newAppend()
         .appendFile(FILE_DAY_1)
         .commit();
 
     Assert.assertNotNull("Should not be empty table", table.currentSnapshot());
-    long baseSnapshotId = table.currentSnapshot().snapshotId();
-
-    // When:
 
     ModifyFiles modify = table.newModify()
-        .modifyFiles(emptySet(), of(FILE_DAY_2_MODIFIED))
-        .validate(baseSnapshotId, EXPRESSION_DAY_2);
+        .modifyFiles(ImmutableSet.of(), ImmutableSet.of(FILE_DAY_2_MODIFIED))
+        .failOnNewFiles(EXPRESSION_DAY_2);
 
     table.newAppend()
         .appendFile(FILE_DAY_2)
         .commit();
     long timelineSnapshotId = table.currentSnapshot().snapshotId();
 
-    // Then:
-
     AssertHelpers.assertThrows("Should reject commit",
-        ValidationException.class, "Modify operation requires no in-range changes to timeline.",
+        ValidationException.class, "Modify operation detected a new file",
         modify::commit);
 
     Assert.assertEquals("Should not create a new snapshot",
@@ -397,28 +324,21 @@ public class TestModify extends TableTestBase {
 
   @Test
   public void testModifyIncompatibleDeletionTableTimelineValidated() {
-    // Given:
-
     table.newAppend()
         .appendFile(FILE_DAY_1)
         .appendFile(FILE_DAY_2)
         .commit();
 
     Assert.assertNotNull("Should not be empty table", table.currentSnapshot());
-    long baseSnapshotId = table.currentSnapshot().snapshotId();
-
-    // When:
 
     ModifyFiles modify = table.newModify()
-        .modifyFiles(of(FILE_DAY_2), of(FILE_DAY_2_MODIFIED))
-        .validate(baseSnapshotId, EXPRESSION_DAY_2);
+        .modifyFiles(ImmutableSet.of(FILE_DAY_2), ImmutableSet.of(FILE_DAY_2_MODIFIED))
+        .failOnNewFiles(EXPRESSION_DAY_2);
 
     table.newDelete()
         .deleteFile(FILE_DAY_2)
         .commit();
     long timelineSnapshotId = table.currentSnapshot().snapshotId();
-
-    // Then:
 
     AssertHelpers.assertThrows("Should reject commit",
         ValidationException.class, "Missing required files to delete:",
@@ -430,31 +350,24 @@ public class TestModify extends TableTestBase {
 
   @Test
   public void testModifyIncompatibleRewriteTableTimelineValidated() {
-    // Given:
-
     table.newAppend()
         .appendFile(FILE_DAY_1)
         .appendFile(FILE_DAY_2)
         .commit();
 
     Assert.assertNotNull("Should not be empty table", table.currentSnapshot());
-    long baseSnapshotId = table.currentSnapshot().snapshotId();
-
-    // When:
 
     ModifyFiles modify = table.newModify()
-        .modifyFiles(of(FILE_DAY_2), of(FILE_DAY_2_MODIFIED))
-        .validate(baseSnapshotId, EXPRESSION_DAY_2);
+        .modifyFiles(ImmutableSet.of(FILE_DAY_2), ImmutableSet.of(FILE_DAY_2_MODIFIED))
+        .failOnNewFiles(EXPRESSION_DAY_2);
 
     table.newRewrite()
-        .rewriteFiles(of(FILE_DAY_2), of(FILE_DAY_2))
+        .rewriteFiles(ImmutableSet.of(FILE_DAY_2), ImmutableSet.of(FILE_DAY_2))
         .commit();
     long timelineSnapshotId = table.currentSnapshot().snapshotId();
 
-    // Then:
-
     AssertHelpers.assertThrows("Should reject commit",
-        ValidationException.class, "Modify operation requires no in-range changes to timeline.",
+        ValidationException.class, "Modify operation detected a new file",
         modify::commit);
 
     Assert.assertEquals("Should not create a new snapshot",
@@ -463,20 +376,15 @@ public class TestModify extends TableTestBase {
 
   @Test
   public void testModifyCompatibleExpirationAdditionTableTimelineValidated() {
-    // Given:
-
     table.newAppend()
         .appendFile(FILE_DAY_2)
         .commit(); // id 1
 
     Assert.assertNotNull("Should not be empty table", table.currentSnapshot());
-    long baseSnapshotId = table.currentSnapshot().snapshotId();
-
-    // When:
 
     ModifyFiles modify = table.newModify()
-        .modifyFiles(of(FILE_DAY_2), of(FILE_DAY_2_MODIFIED))
-        .validate(baseSnapshotId, EXPRESSION_DAY_2);
+        .modifyFiles(ImmutableSet.of(FILE_DAY_2), ImmutableSet.of(FILE_DAY_2_MODIFIED))
+        .failOnNewFiles(EXPRESSION_DAY_2);
 
     table.newAppend()
         .appendFile(FILE_DAY_1)
@@ -489,29 +397,22 @@ public class TestModify extends TableTestBase {
 
     modify.commit();
 
-    // Then:
-
     Assert.assertNotEquals("Should create a new snapshot",
         timelineSnapshotId, table.currentSnapshot().snapshotId());
   }
 
   @Test
   public void testModifyCompatibleExpirationDeletionTableTimelineValidated() {
-    // Given:
-
     table.newAppend()
         .appendFile(FILE_DAY_1)
         .appendFile(FILE_DAY_2)
         .commit(); // id 1
 
     Assert.assertNotNull("Should not be empty table", table.currentSnapshot());
-    long baseSnapshotId = table.currentSnapshot().snapshotId();
-
-    // When:
 
     ModifyFiles modify = table.newModify()
-        .modifyFiles(of(FILE_DAY_2), of(FILE_DAY_2_MODIFIED))
-        .validate(baseSnapshotId, EXPRESSION_DAY_2);
+        .modifyFiles(ImmutableSet.of(FILE_DAY_2), ImmutableSet.of(FILE_DAY_2_MODIFIED))
+        .failOnNewFiles(EXPRESSION_DAY_2);
 
     table.newDelete()
         .deleteFile(FILE_DAY_1)
@@ -524,28 +425,21 @@ public class TestModify extends TableTestBase {
 
     modify.commit();
 
-    // Then:
-
     Assert.assertNotEquals("Should create a new snapshot",
         timelineSnapshotId, table.currentSnapshot().snapshotId());
   }
 
   @Test
   public void testModifyIncompatibleExpirationTableTimelineValidated() {
-    // Given:
-
     table.newAppend()
         .appendFile(FILE_DAY_1)
         .commit(); // id 1
 
     Assert.assertNotNull("Should not be empty table", table.currentSnapshot());
-    long baseSnapshotId = table.currentSnapshot().snapshotId();
-
-    // When:
 
     ModifyFiles modify = table.newModify()
-        .modifyFiles(emptySet(), of(FILE_DAY_2_MODIFIED))
-        .validate(baseSnapshotId, EXPRESSION_DAY_2);
+        .modifyFiles(ImmutableSet.of(), ImmutableSet.of(FILE_DAY_2_MODIFIED))
+        .failOnNewFiles(EXPRESSION_DAY_2);
 
     table.newAppend()
         .appendFile(FILE_DAY_2)
@@ -560,10 +454,8 @@ public class TestModify extends TableTestBase {
         .commit();
     long timelineSnapshotId = table.currentSnapshot().snapshotId();
 
-    // Then:
-
     AssertHelpers.assertThrows("Should reject commit",
-        ValidationException.class, "Modify operation requires to timeline to be present.",
+        ValidationException.class, "Modify operation cannot find snapshot",
         modify::commit);
 
     Assert.assertEquals("Should not create a new snapshot",
@@ -572,16 +464,11 @@ public class TestModify extends TableTestBase {
 
   @Test
   public void testModifyIncompatibleBaseExpirationEmptyTableTimelineValidated() {
-    // Given:
-
     Assert.assertNull("Should be empty table", table.currentSnapshot());
-    Long baseSnapshotId = null;
-
-    // When:
 
     ModifyFiles modify = table.newModify()
-        .modifyFiles(emptySet(), of(FILE_DAY_2_MODIFIED))
-        .validate(baseSnapshotId, EXPRESSION_DAY_2);
+        .modifyFiles(ImmutableSet.of(), ImmutableSet.of(FILE_DAY_2_MODIFIED))
+        .failOnNewFiles(EXPRESSION_DAY_2);
 
     table.newAppend()
         .appendFile(FILE_DAY_2)
@@ -596,10 +483,8 @@ public class TestModify extends TableTestBase {
         .commit();
     long timelineSnapshotId = table.currentSnapshot().snapshotId();
 
-    // Then:
-
     AssertHelpers.assertThrows("Should reject commit",
-        ValidationException.class, "Modify operation requires to timeline to be present.",
+        ValidationException.class, "Modify operation cannot find snapshot",
         modify::commit);
 
     Assert.assertEquals("Should not create a new snapshot",
@@ -607,27 +492,20 @@ public class TestModify extends TableTestBase {
   }
 
   @Test
-  public void testModifyergEmptyTableTimelineValidated() {
-    // Given:
-
+  public void testModifyEmptyTableTimelineValidated() {
     Assert.assertNull("Should be empty table", table.currentSnapshot());
-    Long baseSnapshotId = null;
-
-    // When:
 
     ModifyFiles modify = table.newModify()
-        .modifyFiles(emptySet(), of(FILE_DAY_2_MODIFIED))
-        .validate(baseSnapshotId, EXPRESSION_DAY_2_ID_RANGE);
+        .modifyFiles(ImmutableSet.of(), ImmutableSet.of(FILE_DAY_2_MODIFIED))
+        .failOnNewFiles(EXPRESSION_DAY_2_ID_RANGE);
 
     table.newAppend()
         .appendFile(FILE_DAY_1)
         .commit(); // id 1
     long timelineSnapshotId = table.currentSnapshot().snapshotId();
 
-    // Then:
-
     AssertHelpers.assertThrows("Should reject commit",
-        ValidationException.class, "Modify operation requires no in-range changes to timeline.",
+        ValidationException.class, "Modify operation detected a new file",
         modify::commit);
 
     Assert.assertEquals("Should not create a new snapshot",

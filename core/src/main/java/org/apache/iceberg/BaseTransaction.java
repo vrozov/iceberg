@@ -161,7 +161,9 @@ class BaseTransaction implements Transaction {
   @Override
   public ModifyFiles newModify() {
     checkLastOperationCommitted("ModifyFiles");
-    ModifyFiles modify = new DefaultModifyFiles(transactionOps);
+    Long baseSnapshotId = currentId(current);
+    ModifyFiles modify = new DefaultModifyFiles(transactionOps, baseSnapshotId);
+    modify.deleteWith(enqueueDelete);
     updates.add(modify);
     return modify;
   }
@@ -336,7 +338,7 @@ class BaseTransaction implements Transaction {
 
     @Override
     public TableScan newScan() {
-      throw new UnsupportedOperationException("Transaction tables do not support scans");
+      return new BaseTableScan(transactionOps, this);
     }
 
     @Override
