@@ -21,7 +21,12 @@ package org.apache.iceberg.spark.source;
 
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
-import org.apache.iceberg.*;
+import org.apache.iceberg.AppendFiles;
+import org.apache.iceberg.DataFile;
+import org.apache.iceberg.ModifyFiles;
+import org.apache.iceberg.ReplacePartitions;
+import org.apache.iceberg.RewriteFiles;
+import org.apache.iceberg.Table;
 import org.apache.iceberg.expressions.Expression;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -129,7 +134,7 @@ public class CommitFunctions {
       RewriteFiles rewriteFiles = table.newRewrite()
               .rewriteFiles(ImmutableSet.copyOf(deletedFiles), ImmutableSet.copyOf(newFiles));
 
-      LOG.info("Committing rewrite files with {} deleted and {} new files to table {} prohibiting new files where {}",
+      LOG.info("Committing rewrite files with {} deleted and {} new files to table {}",
               Iterables.size(deletedFiles), Iterables.size(newFiles), table);
       long start = System.currentTimeMillis();
       rewriteFiles.commit();
