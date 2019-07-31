@@ -9,5 +9,6 @@ build
 out
 # web site build
 site/site
+.out
 */.out
 */.dist

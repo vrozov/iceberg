@@ -25,6 +25,7 @@ import org.apache.iceberg.AppendFiles;
 import org.apache.iceberg.DataFile;
 import org.apache.iceberg.ModifyFiles;
 import org.apache.iceberg.ReplacePartitions;
+import org.apache.iceberg.RewriteFiles;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.expressions.Expression;
 import org.slf4j.Logger;
@@ -116,4 +117,30 @@ public class CommitFunctions {
       LOG.info("Committed in {} ms", duration);
     }
   }
+
+  public static class Rewrite implements CommitFunction {
+    private final Iterable<DataFile> deletedFiles;
+
+    private Rewrite(Iterable<DataFile> deletedFiles) {
+      this.deletedFiles = deletedFiles;
+    }
+
+    public static Rewrite files(Iterable<DataFile> deletedFiles) {
+      return new Rewrite(deletedFiles);
+    }
+
+    @Override
+    public void apply(Table table, Iterable<DataFile> newFiles) {
+      RewriteFiles rewriteFiles = table.newRewrite()
+              .rewriteFiles(ImmutableSet.copyOf(deletedFiles), ImmutableSet.copyOf(newFiles));
+
+      LOG.info("Committing rewrite files with {} deleted and {} new files to table {}",
+              Iterables.size(deletedFiles), Iterables.size(newFiles), table);
+      long start = System.currentTimeMillis();
+      rewriteFiles.commit();
+      long duration = System.currentTimeMillis() - start;
+      LOG.info("Committed rewrite in {} ms", duration);
+    }
+  }
+
 }
