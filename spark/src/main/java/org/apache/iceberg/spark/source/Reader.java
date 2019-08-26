@@ -33,6 +33,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
+import org.apache.commons.lang3.ArrayUtils;
 import org.apache.iceberg.CombinedScanTask;
 import org.apache.iceberg.DataFile;
 import org.apache.iceberg.DataTask;
@@ -103,6 +104,7 @@ public class Reader implements DataSourceReader, SupportsPushDownFilters, Suppor
   private final Long splitSize;
   private final Integer splitLookback;
   private final Long splitOpenFileCost;
+  private final boolean includeFileName;
   private final FileIO fileIo;
   private final EncryptionManager encryptionManager;
   private final boolean caseSensitive;
@@ -128,8 +130,7 @@ public class Reader implements DataSourceReader, SupportsPushDownFilters, Suppor
     this.splitSize = options.get("split-size").map(Long::parseLong).orElse(null);
     this.splitLookback = options.get("lookback").map(Integer::parseInt).orElse(null);
     this.splitOpenFileCost = options.get("file-open-cost").map(Long::parseLong).orElse(null);
-
-    this.schema = table.schema();
+    this.includeFileName = options.get("include-file-name").map(Boolean::parseBoolean).orElse(false);
     this.fileIo = table.io();
     this.encryptionManager = table.encryption();
     this.caseSensitive = caseSensitive;
@@ -141,6 +142,11 @@ public class Reader implements DataSourceReader, SupportsPushDownFilters, Suppor
         this.schema = SparkSchemaUtil.prune(table.schema(), requestedSchema);
       } else {
         this.schema = table.schema();
+      }
+      if (includeFileName) {
+        List<Types.NestedField> columns = Lists.newArrayList(schema.columns());
+        columns.add(Types.NestedField.required(Integer.MAX_VALUE, "_input_file_name_", Types.StringType.get()));
+        schema = new Schema(columns);
       }
     }
     return schema;
@@ -180,10 +186,13 @@ public class Reader implements DataSourceReader, SupportsPushDownFilters, Suppor
     List<Filter> pushed = Lists.newArrayListWithExpectedSize(filters.length);
 
     for (Filter filter : filters) {
-      Expression expr = SparkFilters.convert(filter);
-      if (expr != null) {
-        expressions.add(expr);
-        pushed.add(filter);
+      // we cannot push down filters on `_input_file_name_`
+      if (!ArrayUtils.contains(filter.references(), "_input_file_name_")) {
+        Expression expr = SparkFilters.convert(filter);
+        if (expr != null) {
+          expressions.add(expr);
+          pushed.add(filter);
+        }
       }
     }
 
@@ -430,6 +439,20 @@ public class Reader implements DataSourceReader, SupportsPushDownFilters, Suppor
         // return the base iterator
         iterSchema = finalSchema;
         iter = open(task, finalSchema);
+      }
+
+      Types.NestedField fileNameField = expectedSchema.findField("_input_file_name_");
+      if (fileNameField != null) {
+        List<Types.NestedField> finalColumns = Lists.newArrayList(iterSchema.columns());
+        finalColumns.add(fileNameField);
+        iterSchema = new Schema(finalColumns);
+
+        JoinedRow rowWithFileName = new JoinedRow();
+        GenericInternalRow fileName = new GenericInternalRow(1);
+        fileName.update(0, UTF8String.fromString(file.path().toString()));
+        rowWithFileName.withRight(fileName);
+
+        iter = Iterators.transform(iter, rowWithFileName::withLeft);
       }
 
       // TODO: remove the projection by reporting the iterator's schema back to Spark
