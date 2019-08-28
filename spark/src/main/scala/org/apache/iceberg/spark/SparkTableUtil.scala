@@ -31,8 +31,11 @@ import org.apache.iceberg.parquet.ParquetUtil
 import org.apache.iceberg.spark.hacks.Hive
 import org.apache.parquet.hadoop.ParquetFileReader
 import org.apache.spark.sql.{DataFrame, SparkSession}
+import org.apache.spark.sql.catalyst.CatalystTypeConverters
 import org.apache.spark.sql.catalyst.catalog.CatalogTablePartition
+import org.apache.spark.sql.execution.datasources.{FileStatusCache, InMemoryFileIndex}
 import scala.collection.JavaConverters._
+import scala.collection.mutable
 
 object SparkTableUtil {
   /**
@@ -102,6 +105,25 @@ object SparkTableUtil {
       throw new UnsupportedOperationException(s"Unknown partition format: $format")
     }
   }
+
+  def getPartitions(spark: SparkSession, rootPath: Path): Seq[Partition] = {
+    val fileStatusCache = FileStatusCache.getOrCreate(spark)
+    val fileIndex = new InMemoryFileIndex(spark, Seq(rootPath), Map.empty, None, fileStatusCache)
+    val spec = fileIndex.partitionSpec
+    val schema = spec.partitionColumns
+    spec.partitions.map { p =>
+      val values = mutable.Map.empty[String, String]
+      schema.foreach { field =>
+        val fieldIndex = schema.fieldIndex(field.name)
+        val catalystValue = p.values.get(fieldIndex, field.dataType)
+        val value = CatalystTypeConverters.convertToScala(catalystValue, field.dataType)
+        values.update(field.name, value.toString)
+      }
+      Partition(values.toMap, p.path.toString)
+    }
+  }
+
+  case class Partition(values: Map[String, String], uri: String)
 
   /**
    * Case class representing a data file.
