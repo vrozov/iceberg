@@ -34,6 +34,9 @@ import org.apache.iceberg.hadoop.HadoopTables;
 import org.apache.iceberg.hive.HiveCatalog;
 import org.apache.iceberg.hive.HiveCatalogs;
 import org.apache.iceberg.spark.SparkSchemaUtil;
+import org.apache.iceberg.spark.source.CommitOperations.Append;
+import org.apache.iceberg.spark.source.CommitOperations.CommitOperation;
+import org.apache.iceberg.spark.source.CommitOperations.DynamicPartitionOverwrite;
 import org.apache.iceberg.transforms.Transform;
 import org.apache.iceberg.transforms.UnknownTransform;
 import org.apache.iceberg.types.CheckCompatibility;
@@ -82,7 +85,8 @@ public class IcebergSource implements DataSourceV2, ReadSupport, WriteSupport, D
     validatePartitionTransforms(table.spec());
     String appId = lazySparkSession().sparkContext().applicationId();
     String wapId = lazySparkSession().conf().get("spark.wap.id", null);
-    return Optional.of(new Writer(table, options, mode == SaveMode.Overwrite, appId, wapId));
+    CommitOperation commitOp = mode == SaveMode.Overwrite ? DynamicPartitionOverwrite.get() : Append.get();
+    return Optional.of(new Writer(table, options, commitOp, appId, wapId));
   }
 
   @Override
