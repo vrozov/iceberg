@@ -198,4 +198,104 @@ public class TestDataSourceOptions {
 
     Assert.assertEquals("Spark partitions should match", 2, resultDf.javaRDD().getNumPartitions());
   }
+
+  @Test
+  public void testFileNameWithUnpartitionedTable() throws IOException {
+    String tableLocation = temp.newFolder("iceberg-table").toString();
+
+    HadoopTables tables = new HadoopTables(CONF);
+    PartitionSpec spec = PartitionSpec.unpartitioned();
+    Map<String, String> options = Maps.newHashMap();
+    Table table = tables.create(SCHEMA, spec, options, tableLocation);
+
+    List<SimpleRecord> records = Lists.newArrayList(
+        new SimpleRecord(1, "a"),
+        new SimpleRecord(2, "a"),
+        new SimpleRecord(3, "a"),
+        new SimpleRecord(2, "b"),
+        new SimpleRecord(3, "c")
+    );
+    Dataset<Row> df = spark.createDataFrame(records, SimpleRecord.class);
+    df.coalesce(1).select("id", "data").write()
+        .format("iceberg")
+        .option("write-format", "parquet")
+        .mode("append")
+        .save(tableLocation);
+
+    List<String> expectedFiles = Lists.newArrayList();
+    try (CloseableIterable<FileScanTask> tasks = table.newScan().planFiles()) {
+      tasks.forEach(task -> {
+        expectedFiles.add(task.file().path().toString());
+      });
+    }
+
+    Dataset<String> filesDf = spark.read().format("iceberg")
+        .option("include-file-name", "true")
+        .load(tableLocation)
+        .select("_input_file_name_")
+        .dropDuplicates()
+        .as(Encoders.STRING());
+
+    List<String> reportedFiles = filesDf.collectAsList();
+    Assert.assertEquals(1, reportedFiles.size());
+    Assert.assertEquals(expectedFiles, reportedFiles);
+  }
+
+  @Test
+  public void testFileNameWithPartitionedTable() throws IOException {
+    String tableLocation = temp.newFolder("iceberg-table").toString();
+
+    HadoopTables tables = new HadoopTables(CONF);
+    PartitionSpec spec = PartitionSpec.builderFor(SCHEMA)
+        .identity("data")
+        .build();
+    Map<String, String> options = Maps.newHashMap();
+    Table table = tables.create(SCHEMA, spec, options, tableLocation);
+
+    List<SimpleRecord> records = Lists.newArrayList(
+        new SimpleRecord(1, "a"),
+        new SimpleRecord(2, "a"),
+        new SimpleRecord(3, "a"),
+        new SimpleRecord(2, "b"),
+        new SimpleRecord(3, "c")
+    );
+    Dataset<Row> df = spark.createDataFrame(records, SimpleRecord.class);
+    df.coalesce(1).select("id", "data").orderBy("data").write()
+        .format("iceberg")
+        .option("write-format", "parquet")
+        .mode("append")
+        .save(tableLocation);
+
+    List<String> expectedFiles = Lists.newArrayList();
+    try (CloseableIterable<FileScanTask> tasks = table.newScan().planFiles()) {
+      tasks.forEach(task -> {
+        expectedFiles.add(task.file().path().toString());
+      });
+    }
+
+    Dataset<Row> rows = spark.read().format("iceberg")
+        .option("include-file-name", "true")
+        .load(tableLocation);
+
+    // validate that we can handle projections on _input_file_name_
+    Dataset<String> files = rows
+        .select("_input_file_name_")
+        .dropDuplicates()
+        .as(Encoders.STRING());
+
+    List<String> reportedFiles = files.collectAsList();
+    Assert.assertEquals(3, reportedFiles.size());
+    Assert.assertEquals(expectedFiles, reportedFiles);
+
+    // validate that we don't push down filters on _input_file_name_
+    files = rows
+        .select("_input_file_name_")
+        .filter("_input_file_name_ != 'a'")
+        .dropDuplicates()
+        .as(Encoders.STRING());
+
+    reportedFiles = files.collectAsList();
+    Assert.assertEquals(3, reportedFiles.size());
+    Assert.assertEquals(expectedFiles, reportedFiles);
+  }
 }

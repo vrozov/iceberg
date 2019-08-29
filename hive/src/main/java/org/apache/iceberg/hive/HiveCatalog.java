@@ -26,11 +26,14 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hive.metastore.api.NoSuchObjectException;
 import org.apache.hadoop.hive.metastore.api.Table;
 import org.apache.iceberg.BaseMetastoreCatalog;
+import org.apache.iceberg.BaseTable;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.TableMetadata;
+import org.apache.iceberg.TableMetadataParser;
 import org.apache.iceberg.TableOperations;
 import org.apache.iceberg.catalog.TableIdentifier;
+import org.apache.iceberg.hadoop.HadoopInputFile;
 import org.apache.thrift.TException;
 
 public class HiveCatalog extends BaseMetastoreCatalog implements Closeable {
@@ -126,6 +129,15 @@ public class HiveCatalog extends BaseMetastoreCatalog implements Closeable {
       Thread.currentThread().interrupt();
       throw new RuntimeException("Interrupted in call to rename", e);
     }
+  }
+
+  @Override
+  public org.apache.iceberg.Table registerTable(TableIdentifier identifier, String metadataFileLocation) {
+    TableOperations ops = newTableOps(identifier);
+    HadoopInputFile metadataFile = HadoopInputFile.fromLocation(metadataFileLocation, conf);
+    TableMetadata metadata = TableMetadataParser.read(ops, metadataFile);
+    ops.commit(null, metadata);
+    return new BaseTable(ops, identifier.toString());
   }
 
   @Override

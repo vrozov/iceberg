@@ -34,14 +34,12 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
-import org.apache.iceberg.AppendFiles;
 import org.apache.iceberg.DataFile;
 import org.apache.iceberg.DataFiles;
 import org.apache.iceberg.FileFormat;
 import org.apache.iceberg.Metrics;
 import org.apache.iceberg.MetricsConfig;
 import org.apache.iceberg.PartitionSpec;
-import org.apache.iceberg.ReplacePartitions;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.SnapshotUpdate;
 import org.apache.iceberg.Table;
@@ -57,6 +55,7 @@ import org.apache.iceberg.io.OutputFile;
 import org.apache.iceberg.parquet.Parquet;
 import org.apache.iceberg.spark.data.SparkAvroWriter;
 import org.apache.iceberg.spark.data.SparkParquetWriters;
+import org.apache.iceberg.spark.source.CommitOperations.CommitOperation;
 import org.apache.iceberg.util.Tasks;
 import org.apache.spark.sql.catalyst.InternalRow;
 import org.apache.spark.sql.sources.v2.DataSourceOptions;
@@ -79,27 +78,27 @@ import static org.apache.iceberg.TableProperties.DEFAULT_FILE_FORMAT;
 import static org.apache.iceberg.TableProperties.DEFAULT_FILE_FORMAT_DEFAULT;
 
 // TODO: parameterize DataSourceWriter with subclass of WriterCommitMessage
-class Writer implements DataSourceWriter {
+public class Writer implements DataSourceWriter {
   private static final Logger LOG = LoggerFactory.getLogger(Writer.class);
 
   private final Table table;
   private final FileFormat format;
   private final FileIO fileIo;
   private final EncryptionManager encryptionManager;
-  private final boolean replacePartitions;
+  private final CommitOperation<?> commitOp;
   private final String applicationId;
   private final String wapId;
 
-  Writer(Table table, DataSourceOptions options, boolean replacePartitions, String applicationId) {
-    this(table, options, replacePartitions, applicationId, null);
+  public Writer(Table table, DataSourceOptions options, CommitOperation<?> commitOp, String applicationId) {
+    this(table, options, commitOp, applicationId, null);
   }
 
-  Writer(Table table, DataSourceOptions options, boolean replacePartitions, String applicationId, String wapId) {
+  Writer(Table table, DataSourceOptions options, CommitOperation<?> commitOp, String applicationId, String wapId) {
     this.table = table;
     this.format = getFileFormat(table.properties(), options);
     this.fileIo = table.io();
     this.encryptionManager = table.encryption();
-    this.replacePartitions = replacePartitions;
+    this.commitOp = commitOp;
     this.applicationId = applicationId;
     this.wapId = wapId;
   }
@@ -124,15 +123,13 @@ class Writer implements DataSourceWriter {
 
   @Override
   public void commit(WriterCommitMessage[] messages) {
-    if (replacePartitions) {
-      replacePartitions(messages);
-    } else {
-      append(messages);
-    }
+    SnapshotUpdate<?> update = commitOp.prepareSnapshotUpdate(table, files(messages));
+    String desc = commitOp.description();
+    commitOperation(update, desc);
   }
 
-  protected void commitOperation(SnapshotUpdate<?> operation, int numFiles, String description) {
-    LOG.info("Committing {} with {} files to table {}", description, numFiles, table);
+  protected void commitOperation(SnapshotUpdate<?> operation, String description) {
+    LOG.info("Committing {} to table {}", description, table);
     if (applicationId != null) {
       operation.set("spark.app.id", applicationId);
     }
@@ -150,30 +147,6 @@ class Writer implements DataSourceWriter {
     LOG.info("Committed in {} ms", duration);
   }
 
-  private void append(WriterCommitMessage[] messages) {
-    AppendFiles append = table.newAppend();
-
-    int numFiles = 0;
-    for (DataFile file : files(messages)) {
-      numFiles += 1;
-      append.appendFile(file);
-    }
-
-    commitOperation(append, numFiles, "append");
-  }
-
-  private void replacePartitions(WriterCommitMessage[] messages) {
-    ReplacePartitions dynamicOverwrite = table.newReplacePartitions();
-
-    int numFiles = 0;
-    for (DataFile file : files(messages)) {
-      numFiles += 1;
-      dynamicOverwrite.addFile(file);
-    }
-
-    commitOperation(dynamicOverwrite, numFiles, "dynamic partition overwrite");
-  }
-
   @Override
   public void abort(WriterCommitMessage[] messages) {
     Tasks.foreach(files(messages))
@@ -189,7 +162,7 @@ class Writer implements DataSourceWriter {
         });
   }
 
-  protected Table table() {
+  public Table table() {
     return table;
   }
 

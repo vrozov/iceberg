@@ -17,27 +17,45 @@
  * under the License.
  */
 
-package org.apache.iceberg.spark.source;
+package org.apache.iceberg;
 
-import java.util.OptionalLong;
-import org.apache.spark.sql.sources.v2.reader.Statistics;
+import org.apache.iceberg.expressions.Expression;
+import org.apache.iceberg.expressions.Expressions;
 
-public class Stats implements Statistics {
-  private final OptionalLong sizeInBytes;
-  private final OptionalLong numRows;
+public class NoResidualFileScanTask implements FileScanTask {
+  private final FileScanTask task;
 
-  public Stats(long sizeInBytes, long numRows) {
-    this.sizeInBytes = OptionalLong.of(sizeInBytes);
-    this.numRows = OptionalLong.of(numRows);
+  public NoResidualFileScanTask(FileScanTask task) {
+    this.task = task;
   }
 
   @Override
-  public OptionalLong sizeInBytes() {
-    return sizeInBytes;
+  public DataFile file() {
+    return task.file();
   }
 
   @Override
-  public OptionalLong numRows() {
-    return numRows;
+  public PartitionSpec spec() {
+    return task.spec();
+  }
+
+  @Override
+  public long start() {
+    return task.start();
+  }
+
+  @Override
+  public long length() {
+    return task.length();
+  }
+
+  @Override
+  public Expression residual() {
+    return Expressions.alwaysTrue();
+  }
+
+  @Override
+  public Iterable<FileScanTask> split(long splitSize) {
+    return task.split(splitSize);
   }
 }
