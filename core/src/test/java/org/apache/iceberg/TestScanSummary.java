@@ -44,7 +44,10 @@ public class TestScanSummary extends TableTestBase {
         .appendFile(FILE_B) // data_bucket=1
         .commit();
 
-    long firstSnapshotId = table.currentSnapshot().snapshotId();
+    long t1 = System.currentTimeMillis();
+    while (t1 == t0) {
+      t1 = System.currentTimeMillis();
+    }
 
     table.newAppend()
         .appendFile(FILE_C) // data_bucket=2
@@ -53,10 +56,13 @@ public class TestScanSummary extends TableTestBase {
     long secondSnapshotId = table.currentSnapshot().snapshotId();
 
     long t2 = System.currentTimeMillis();
+    while (t2 == t1) {
+      t2 = System.currentTimeMillis();
+    }
 
     // expire the first snapshot
     table.expireSnapshots()
-        .expireSnapshotId(firstSnapshotId)
+        .expireOlderThan(t1)
         .commit();
 
     Assert.assertEquals("Should have one snapshot",
