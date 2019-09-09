@@ -17,23 +17,17 @@
  * under the License.
  */
 
-package org.apache.iceberg.hive;
-
-import org.apache.hadoop.hive.metastore.api.MetaException;
+package org.apache.iceberg.exceptions;
 
 /**
- * Exception used to wrap {@link MetaException} as a {@link RuntimeException} and add context.
+ * Exception raised when attempting to read a file that does not exist.
  */
-public class RuntimeMetaException extends RuntimeException {
-  public RuntimeMetaException(MetaException cause) {
-    super(cause);
+public class NotFoundException extends RuntimeException {
+  public NotFoundException(String message, Object... args) {
+    super(String.format(message, args));
   }
 
-  public RuntimeMetaException(MetaException cause, String message, Object... args) {
+  public NotFoundException(Throwable cause, String message, Object... args) {
     super(String.format(message, args), cause);
-  }
-
-  public RuntimeMetaException(Throwable throwable, String message, Object... args) {
-    super(String.format(message, args), throwable);
   }
 }
