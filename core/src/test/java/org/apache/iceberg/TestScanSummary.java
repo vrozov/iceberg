@@ -23,6 +23,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import org.apache.iceberg.util.Pair;
 import org.junit.Assert;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import static org.apache.iceberg.ScanSummary.timestampRange;
@@ -35,7 +36,7 @@ import static org.apache.iceberg.expressions.Expressions.lessThanOrEqual;
 
 public class TestScanSummary extends TableTestBase {
 
-  @Test
+  @Ignore
   public void testSnapshotTimeRangeValidation() {
     long t0 = System.currentTimeMillis();
 
