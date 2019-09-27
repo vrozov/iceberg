@@ -39,6 +39,8 @@ public interface RewriteManifests extends SnapshotUpdate<RewriteManifests> {
    * with the same cluster key will be written to the same manifest (unless the file is large and
    * split into multiple files).
    *
+   * Note that either clusterBy/rewriteIf should be used or deleteManifest/addManifest, not both.
+   *
    * @param func Function used to cluster data files to manifests.
    * @return this for method chaining
    */
@@ -49,9 +51,35 @@ public interface RewriteManifests extends SnapshotUpdate<RewriteManifests> {
    * that do not match the predicate are kept as-is. If this is not called and no predicate is set, then
    * all manifests will be rewritten.
    *
+   * Note that either clusterBy/rewriteIf should be used or deleteManifest/addManifest, not both.
+   *
    * @param predicate Predicate used to determine which manifests to rewrite. If true then the manifest
    *                  file will be included for rewrite. If false then then manifest is kept as-is.
    * @return this for method chaining
    */
   RewriteManifests rewriteIf(Predicate<ManifestFile> predicate);
+
+  /**
+   * Deletes a {@link ManifestFile manifest file} from the table. This method should be used
+   * together with {@link #addManifest(ManifestFile)} when manifests are rewritten using
+   * an external process.
+   *
+   * Note that either clusterBy/rewriteIf should be used or deleteManifest/addManifest, not both.
+   *
+   * @param manifest a manifest to delete
+   * @return this for method chaining
+   */
+  RewriteManifests deleteManifest(ManifestFile manifest);
+
+  /**
+   * Adds a {@link ManifestFile manifest file} to the table. This method should be used
+   * together with {@link #deleteManifest(ManifestFile)} when manifests are rewritten using
+   * an external process. The added manifest cannot contain new or deleted files.
+   *
+   * Note that either clusterBy/rewriteIf should be used or deleteManifest/addManifest, not both.
+   *
+   * @param manifest a manifest to add
+   * @return this for method chaining
+   */
+  RewriteManifests addManifest(ManifestFile manifest);
 }
