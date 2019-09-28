@@ -362,6 +362,26 @@ project(':iceberg-parquet') {
 project(':iceberg-spark') {
   apply plugin: 'scala'
 
+
+  sourceSets {
+    main {
+      java {
+        srcDirs = ['src/main/java']
+      }
+      scala {
+        srcDirs = ['src/main/scala']
+      }
+    }
+    test {
+      java {
+        srcDirs = ['src/test/java']
+      }
+      scala {
+        srcDirs = ['src/test/scala']
+      }
+    }
+  }
+  
   dependencies {
     compile project(':iceberg-api')
     compile project(':iceberg-common')
@@ -375,6 +395,7 @@ project(':iceberg-spark') {
       exclude group: 'org.apache.avro', module: 'avro'
     }
 
+    testCompile "org.scalatest:scalatest_2.11"
     testCompile "org.apache.hadoop:hadoop-hdfs::tests"
     testCompile "org.apache.hadoop:hadoop-common::tests"
     testCompile("org.apache.hadoop:hadoop-minicluster") {
