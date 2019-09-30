@@ -355,7 +355,7 @@ object SparkTableUtil {
     }
   }
 
-  private case class Manifest(location: String, fileLength: Long, specId: Int) {
+  private[iceberg] case class Manifest(location: String, fileLength: Long, specId: Int) {
     def toManifestFile: ManifestFile = new ManifestFile {
       override def path: String = location
 

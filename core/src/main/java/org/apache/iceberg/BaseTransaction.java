@@ -72,13 +72,13 @@ class BaseTransaction implements Transaction {
   BaseTransaction(TableOperations ops, TransactionType type, TableMetadata start) {
     this.ops = ops;
     this.transactionTable = new TransactionTable();
+    this.current = start;
     this.transactionOps = new TransactionTableOperations();
     this.updates = Lists.newArrayList();
     this.intermediateSnapshotIds = Sets.newHashSet();
     this.base = ops.current();
     this.type = type;
     this.lastBase = null;
-    this.current = start;
   }
 
   @Override
@@ -488,6 +488,16 @@ class BaseTransaction implements Transaction {
     @Override
     public PartitionSpec spec() {
       return current.spec();
+    }
+
+    @Override
+    public PartitionSpec spec(int specId) {
+      return current.spec(specId);
+    }
+
+    @Override
+    public Iterable<PartitionSpec> specs() {
+      return current.specs();
     }
 
     @Override
