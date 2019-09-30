@@ -55,8 +55,6 @@ public class Conversions {
         return Float.valueOf(asString);
       case DOUBLE:
         return Double.valueOf(asString);
-      case DATE:
-        return Literal.of(asString).to(Types.DateType.get()).value();
       case STRING:
         return asString;
       case UUID:
@@ -69,6 +67,8 @@ public class Conversions {
         return asString.getBytes(StandardCharsets.UTF_8);
       case DECIMAL:
         return new BigDecimal(asString);
+      case DATE:
+        return Literal.of(asString).to(Types.DateType.get()).value();
       default:
         throw new UnsupportedOperationException(
             "Unsupported type for fromPartitionString: " + type);
