@@ -131,6 +131,11 @@ public class HiveTableOperations extends BaseMetastoreTableOperations {
     Optional<Long> lockId = Optional.empty();
     try {
       lockId = Optional.of(acquireLock());
+
+      if (base != current()) {
+        throw new CommitFailedException("Cannot commit: stale table metadata for %s.%s", database, tableName);
+      }
+
       // TODO add lock heart beating for cases where default lock timeout is too low.
       Table tbl;
       if (base != null) {
