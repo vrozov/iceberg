@@ -43,7 +43,6 @@ public class TestHiveTableConcurrency extends HiveTableBaseTest {
   @Test
   public synchronized void testConcurrentFastAppends() {
     Table icebergTable = catalog.loadTable(TABLE_IDENTIFIER);
-    Table anotherIcebergTable = catalog.loadTable(TABLE_IDENTIFIER);
 
     String fileName = UUID.randomUUID().toString();
     DataFile file = DataFiles.builder(icebergTable.spec())
@@ -56,10 +55,10 @@ public class TestHiveTableConcurrency extends HiveTableBaseTest {
         (ThreadPoolExecutor) Executors.newFixedThreadPool(2));
 
     AtomicInteger barrier = new AtomicInteger(0);
-    Tasks.foreach(icebergTable, anotherIcebergTable)
+    Tasks.range(2)
         .stopOnFailure().throwFailureWhenFinished()
         .executeWith(executorService)
-        .run(table -> {
+        .run(index -> {
           for (int numCommittedFiles = 0; numCommittedFiles < 10; numCommittedFiles++) {
             while (barrier.get() < numCommittedFiles * 2) {
               try {
@@ -69,7 +68,7 @@ public class TestHiveTableConcurrency extends HiveTableBaseTest {
               }
             }
 
-            table.newFastAppend().appendFile(file).commit();
+            icebergTable.newFastAppend().appendFile(file).commit();
             barrier.incrementAndGet();
           }
         });
