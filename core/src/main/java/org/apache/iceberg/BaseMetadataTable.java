@@ -19,7 +19,6 @@
 
 package org.apache.iceberg;
 
-import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import java.util.List;
 import java.util.Map;
@@ -59,13 +58,8 @@ abstract class BaseMetadataTable implements Table {
   }
 
   @Override
-  public PartitionSpec spec(int specId) {
-    return spec.specId() == specId ? spec : null;
-  }
-
-  @Override
-  public Iterable<PartitionSpec> specs() {
-    return ImmutableList.of(spec);
+  public Map<Integer, PartitionSpec> specs() {
+    return ImmutableMap.of(spec.specId(), spec);
   }
 
   @Override

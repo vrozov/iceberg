@@ -491,13 +491,8 @@ class BaseTransaction implements Transaction {
     }
 
     @Override
-    public PartitionSpec spec(int specId) {
-      return current.spec(specId);
-    }
-
-    @Override
-    public Iterable<PartitionSpec> specs() {
-      return current.specs();
+    public Map<Integer, PartitionSpec> specs() {
+      return current.specsById();
     }
 
     @Override

@@ -59,19 +59,11 @@ public interface Table {
   PartitionSpec spec();
 
   /**
-   * Return the {@link PartitionSpec partition spec} for this table with the given id, or null if
-   * there is no such partition spec.
+   * Return a map of {@link PartitionSpec partition specs} for this table.
    *
-   * @return this table's partition spec with the given id
+   * @return this table's partition specs map
    */
-  PartitionSpec spec(int specId);
-
-  /**
-   * Return all {@link PartitionSpec partition specs} for this table.
-   *
-   * @return this table's partition specs
-   */
-  Iterable<PartitionSpec> specs();
+  Map<Integer, PartitionSpec> specs();
 
   /**
    * Return a map of string properties for this table.

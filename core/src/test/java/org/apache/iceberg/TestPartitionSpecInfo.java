@@ -19,7 +19,7 @@
 
 package org.apache.iceberg;
 
-import com.google.common.collect.Lists;
+import com.google.common.collect.ImmutableMap;
 import java.io.File;
 import java.io.IOException;
 import org.apache.iceberg.types.Types;
@@ -57,10 +57,8 @@ public class TestPartitionSpecInfo {
     TestTables.TestTable table = TestTables.create(tableDir, "test", schema, spec);
 
     Assert.assertEquals(spec, table.spec());
-    Assert.assertEquals(spec, table.spec(spec.specId()));
-    Assert.assertEquals(Lists.newArrayList(spec), table.specs());
-
-    Assert.assertNull(table.spec(Integer.MAX_VALUE));
+    Assert.assertEquals(ImmutableMap.of(spec.specId(), spec), table.specs());
+    Assert.assertNull(table.specs().get(Integer.MAX_VALUE));
   }
 
   @Test
@@ -69,10 +67,8 @@ public class TestPartitionSpecInfo {
     TestTables.TestTable table = TestTables.create(tableDir, "test", schema, spec);
 
     Assert.assertEquals(spec, table.spec());
-    Assert.assertEquals(spec, table.spec(spec.specId()));
-    Assert.assertEquals(Lists.newArrayList(spec), table.specs());
-
-    Assert.assertNull(table.spec(Integer.MAX_VALUE));
+    Assert.assertEquals(ImmutableMap.of(spec.specId(), spec), table.specs());
+    Assert.assertNull(table.specs().get(Integer.MAX_VALUE));
   }
 
   @Test
@@ -92,10 +88,9 @@ public class TestPartitionSpecInfo {
     table.ops().commit(base, base.updatePartitionSpec(newSpec));
 
     Assert.assertEquals(newSpec, table.spec());
-    Assert.assertEquals(newSpec, table.spec(newSpec.specId()));
-    Assert.assertEquals(spec, table.spec(spec.specId()));
-    Assert.assertEquals(Lists.newArrayList(spec, newSpec), table.specs());
-
-    Assert.assertNull(table.spec(Integer.MAX_VALUE));
+    Assert.assertEquals(newSpec, table.specs().get(newSpec.specId()));
+    Assert.assertEquals(spec, table.specs().get(spec.specId()));
+    Assert.assertEquals(ImmutableMap.of(spec.specId(), spec, newSpec.specId(), newSpec), table.specs());
+    Assert.assertNull(table.specs().get(Integer.MAX_VALUE));
   }
 }
