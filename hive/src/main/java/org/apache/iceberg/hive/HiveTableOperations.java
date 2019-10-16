@@ -131,11 +131,6 @@ public class HiveTableOperations extends BaseMetastoreTableOperations {
     Optional<Long> lockId = Optional.empty();
     try {
       lockId = Optional.of(acquireLock());
-
-      if (base != current()) {
-        throw new CommitFailedException("Cannot commit: stale table metadata for %s.%s", database, tableName);
-      }
-
       // TODO add lock heart beating for cases where default lock timeout is too low.
       Table tbl;
       if (base != null) {
@@ -158,11 +153,12 @@ public class HiveTableOperations extends BaseMetastoreTableOperations {
       }
 
       tbl.setSd(storageDescriptor(metadata)); // set to pickup any schema changes
-      final String metadataLocation = tbl.getParameters().get(METADATA_LOCATION_PROP);
-      if (!Objects.equals(currentMetadataLocation(), metadataLocation)) {
-        String errMsg = String.format("metadataLocation = %s is not same as table metadataLocation %s for %s.%s",
-            currentMetadataLocation(), metadataLocation, database, tableName);
-        throw new CommitFailedException(errMsg);
+      String metadataLocation = tbl.getParameters().get(METADATA_LOCATION_PROP);
+      String baseMetadataLocation = base != null ? base.file().location() : null;
+      if (!Objects.equals(baseMetadataLocation, metadataLocation)) {
+        throw new CommitFailedException(
+            "Base metadata location '%s' is not same as the current table metadata location '%s' for %s.%s",
+            baseMetadataLocation, metadataLocation, database, tableName);
       }
 
       setPdtParameters(metadata.properties(), tbl);
