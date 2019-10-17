@@ -191,7 +191,7 @@ abstract class BaseTableScan implements TableScan {
   }
 
   @Override
-  public CloseableIterable<CombinedScanTask> planTasks() {
+  public CloseableIterable<CombinedScanTask> planTasks(CloseableIterable<FileScanTask> fileScanTasks) {
     long splitSize;
     if (options.containsKey(TableProperties.SPLIT_SIZE)) {
       splitSize = Long.parseLong(options.get(TableProperties.SPLIT_SIZE));
@@ -215,12 +215,18 @@ abstract class BaseTableScan implements TableScan {
 
     Function<FileScanTask, Long> weightFunc = file -> Math.max(file.length(), openFileCost);
 
-    CloseableIterable<FileScanTask> splitFiles = splitFiles(splitSize);
+    CloseableIterable<FileScanTask> splitFiles = splitFiles(fileScanTasks, splitSize);
     return CloseableIterable.transform(
         CloseableIterable.combine(
             new BinPacking.PackingIterable<>(splitFiles, splitSize, lookback, weightFunc, true),
             splitFiles),
         BaseCombinedScanTask::new);
+  }
+
+  @Override
+  public CloseableIterable<CombinedScanTask> planTasks() {
+    CloseableIterable<FileScanTask> fileScanTasks = planFiles();
+    return planTasks(fileScanTasks);
   }
 
   @Override
@@ -250,8 +256,7 @@ abstract class BaseTableScan implements TableScan {
         .toString();
   }
 
-  private CloseableIterable<FileScanTask> splitFiles(long splitSize) {
-    CloseableIterable<FileScanTask> fileScanTasks = planFiles();
+  private CloseableIterable<FileScanTask> splitFiles(CloseableIterable<FileScanTask> fileScanTasks, long splitSize) {
     Iterable<FileScanTask> splitTasks = FluentIterable
         .from(fileScanTasks)
         .transformAndConcat(input -> input.split(splitSize));

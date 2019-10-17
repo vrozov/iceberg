@@ -26,6 +26,7 @@ import com.google.common.collect.Sets;
 import com.google.common.io.Files;
 import java.io.File;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
@@ -124,20 +125,41 @@ public class TableTestBase {
   }
 
   ManifestFile writeManifest(DataFile... files) throws IOException {
-    File manifestFile = temp.newFile("input.m0.avro");
+    ManifestEntry[] entries = Arrays.stream(files)
+        .map(file -> manifestEntry(ManifestEntry.Status.ADDED, -1, file))
+        .toArray(size -> new ManifestEntry[size]);
+    return writeManifest("input.m0.avro", entries);
+  }
+
+  ManifestFile writeManifest(String fileName, ManifestEntry... entries) throws IOException {
+    File manifestFile = temp.newFile(fileName);
     Assert.assertTrue(manifestFile.delete());
     OutputFile outputFile = table.ops().io().newOutputFile(manifestFile.getCanonicalPath());
 
     ManifestWriter writer = ManifestWriter.write(table.spec(), outputFile);
     try {
-      for (DataFile file : files) {
-        writer.add(file);
+      for (ManifestEntry entry : entries) {
+        writer.addEntry(entry);
       }
     } finally {
       writer.close();
     }
 
     return writer.toManifestFile();
+  }
+
+  ManifestEntry manifestEntry(ManifestEntry.Status status, long snapshotId, DataFile file) {
+    ManifestEntry entry = new ManifestEntry(table.spec().partitionType());
+    switch (status) {
+      case ADDED:
+        return entry.wrapAppend(snapshotId, file);
+      case EXISTING:
+        return entry.wrapExisting(snapshotId, file);
+      case DELETED:
+        return entry.wrapDelete(snapshotId, file);
+      default:
+        throw new IllegalArgumentException("Unexpected entry status: " + status);
+    }
   }
 
   void validateSnapshot(Snapshot old, Snapshot snap, DataFile... newFiles) {

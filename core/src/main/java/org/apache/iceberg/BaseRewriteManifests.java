@@ -35,6 +35,8 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import org.apache.iceberg.exceptions.RuntimeIOException;
+import org.apache.iceberg.exceptions.ValidationException;
+import org.apache.iceberg.io.OutputFile;
 import org.apache.iceberg.util.Tasks;
 import org.apache.iceberg.util.ThreadPools;
 
@@ -42,7 +44,14 @@ import static org.apache.iceberg.TableProperties.MANIFEST_TARGET_SIZE_BYTES;
 import static org.apache.iceberg.TableProperties.MANIFEST_TARGET_SIZE_BYTES_DEFAULT;
 
 
-public class ReplaceManifests extends SnapshotProducer<RewriteManifests> implements RewriteManifests {
+public class BaseRewriteManifests extends SnapshotProducer<RewriteManifests> implements RewriteManifests {
+  private static final String INVALID_USAGE_ERR = "clusterBy/rewriteIf cannot be used with deleteManifest/addManifest";
+
+  private static final String REPLACED_CNT = "manifests-replaced";
+  private static final String KEPT_CNT = "manifests-kept";
+  private static final String NEW_CNT = "manifests-created";
+  private static final String ENTRY_CNT = "entries-processed";
+
   private final TableOperations ops;
   private final PartitionSpec spec;
   private final long manifestTargetSizeBytes;
@@ -55,17 +64,13 @@ public class ReplaceManifests extends SnapshotProducer<RewriteManifests> impleme
   private final AtomicInteger manifestSuffix = new AtomicInteger(0);
   private final AtomicLong entryCount = new AtomicLong(0);
 
-  private final Map<String, String> summaryProps = new HashMap<>();
+  private final SnapshotSummary.Builder summaryBuilder = SnapshotSummary.builder();
 
+  private boolean isDirectReplacement = false;
   private Function<DataFile, Object> clusterByFunc;
   private Predicate<ManifestFile> predicate;
 
-  private static final String REPLACED_CNT = "manifests-replaced";
-  private static final String KEPT_CNT = "manifests-kept";
-  private static final String NEW_CNT = "manifests-created";
-  private static final String ENTRY_CNT = "entries-processed";
-
-  ReplaceManifests(TableOperations ops) {
+  BaseRewriteManifests(TableOperations ops) {
     super(ops);
     this.ops = ops;
     this.spec = ops.current().spec();
@@ -85,45 +90,69 @@ public class ReplaceManifests extends SnapshotProducer<RewriteManifests> impleme
 
   @Override
   public RewriteManifests set(String property, String value) {
-    summaryProps.put(property, value);
+    summaryBuilder.set(property, value);
     return this;
   }
 
   @Override
   protected Map<String, String> summary() {
-    Map<String, String> result = new HashMap<>();
-    result.putAll(summaryProps);
-    result.put(KEPT_CNT, Integer.toString(keptManifests.size()));
-    result.put(NEW_CNT, Integer.toString(newManifests.size()));
-    result.put(REPLACED_CNT, Integer.toString(replacedManifests.size()));
-    result.put(ENTRY_CNT, Long.toString(entryCount.get()));
-    return result;
+    summaryBuilder.set(KEPT_CNT, Integer.toString(keptManifests.size()));
+    summaryBuilder.set(NEW_CNT, Integer.toString(newManifests.size()));
+    summaryBuilder.set(REPLACED_CNT, Integer.toString(replacedManifests.size()));
+    summaryBuilder.set(ENTRY_CNT, Long.toString(entryCount.get()));
+    return summaryBuilder.build();
   }
 
   @Override
-  public ReplaceManifests clusterBy(Function<DataFile, Object> func) {
+  public RewriteManifests clusterBy(Function<DataFile, Object> func) {
+    Preconditions.checkState(!isDirectReplacement, INVALID_USAGE_ERR);
     this.clusterByFunc = func;
     return this;
   }
 
   @Override
-  public ReplaceManifests rewriteIf(Predicate<ManifestFile> pred) {
+  public RewriteManifests rewriteIf(Predicate<ManifestFile> pred) {
+    Preconditions.checkState(!isDirectReplacement, INVALID_USAGE_ERR);
     this.predicate = pred;
     return this;
   }
 
   @Override
-  public List<ManifestFile> apply(TableMetadata base) {
-    Preconditions.checkNotNull(clusterByFunc, "clusterBy function cannot be null");
+  public RewriteManifests deleteManifest(ManifestFile manifest) {
+    Preconditions.checkState(clusterByFunc == null && predicate == null, INVALID_USAGE_ERR);
+    isDirectReplacement = true;
+    replacedManifests.add(manifest);
+    return this;
+  }
 
+  @Override
+  public RewriteManifests addManifest(ManifestFile manifest) {
+    Preconditions.checkState(clusterByFunc == null && predicate == null, INVALID_USAGE_ERR);
+    isDirectReplacement = true;
+    // the manifest must be rewritten with this update's snapshot ID
+    try (ManifestReader reader = ManifestReader.read(ops.io().newInputFile(manifest.path()), ops.current()::spec)) {
+      OutputFile newManifestPath = manifestPath(manifestSuffix.getAndIncrement());
+      Set<ManifestEntry.Status> allowedStatuses = Sets.newHashSet(ManifestEntry.Status.EXISTING);
+      newManifests.add(ManifestWriter.copyManifest(
+          reader, newManifestPath, snapshotId(), summaryBuilder, allowedStatuses));
+    } catch (IOException e) {
+      throw new RuntimeIOException(e, "Failed to close manifest: %s", manifest);
+    }
+    return this;
+  }
+
+  @Override
+  public List<ManifestFile> apply(TableMetadata base) {
     List<ManifestFile> currentManifests = base.currentSnapshot().manifests();
 
-    if (requiresRewrite(currentManifests)) {
-      // run the rewrite process
-      performRewrite(currentManifests);
-    } else {
-      // just keep any new manifests that were added since the last apply(), don't rerun
+    if (isDirectReplacement) {
+      // if we replace manifests directly, we need to ensure that every manifest
+      // we want to replace is still present and hasn't been deleted concurrently
+      // otherwise, we need to fail the commit operation without retrying
+      validateDirectlyReplacedManifests(currentManifests);
       addExistingFromNewCommit(currentManifests);
+    } else {
+      rewriteManifests(currentManifests);
     }
 
     // put new manifests at the beginning
@@ -132,6 +161,27 @@ public class ReplaceManifests extends SnapshotProducer<RewriteManifests> impleme
     apply.addAll(keptManifests);
 
     return apply;
+  }
+
+  private void validateDirectlyReplacedManifests(List<ManifestFile> currentManifests) {
+    Set<ManifestFile> currentManifestSet = Sets.newHashSet(currentManifests);
+    replacedManifests.stream()
+        .filter(manifest -> !currentManifestSet.contains(manifest))
+        .findAny()
+        .ifPresent(manifest -> {
+          throw new ValidationException("Manifest is missing: %s", manifest.path());
+        });
+  }
+
+  private void rewriteManifests(List<ManifestFile> currentManifests) {
+    Preconditions.checkNotNull(clusterByFunc, "clusterBy function cannot be null");
+    if (requiresRewrite(currentManifests)) {
+      // run the rewrite process
+      performRewrite(currentManifests);
+    } else {
+      // just keep any new manifests that were added since the last apply(), don't rerun
+      addExistingFromNewCommit(currentManifests);
+    }
   }
 
   private boolean requiresRewrite(List<ManifestFile> currentManifests) {

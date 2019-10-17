@@ -72,13 +72,13 @@ class BaseTransaction implements Transaction {
   BaseTransaction(TableOperations ops, TransactionType type, TableMetadata start) {
     this.ops = ops;
     this.transactionTable = new TransactionTable();
+    this.current = start;
     this.transactionOps = new TransactionTableOperations();
     this.updates = Lists.newArrayList();
     this.intermediateSnapshotIds = Sets.newHashSet();
     this.base = ops.current();
     this.type = type;
     this.lastBase = null;
-    this.current = start;
   }
 
   @Override
@@ -136,7 +136,7 @@ class BaseTransaction implements Transaction {
   @Override
   public RewriteFiles newRewrite() {
     checkLastOperationCommitted("RewriteFiles");
-    RewriteFiles rewrite = new ReplaceFiles(transactionOps);
+    RewriteFiles rewrite = new BaseRewriteFiles(transactionOps);
     rewrite.deleteWith(enqueueDelete);
     updates.add(rewrite);
     return rewrite;
@@ -145,7 +145,7 @@ class BaseTransaction implements Transaction {
   @Override
   public RewriteManifests rewriteManifests() {
     checkLastOperationCommitted("RewriteManifests");
-    RewriteManifests rewrite = new ReplaceManifests(transactionOps);
+    RewriteManifests rewrite = new BaseRewriteManifests(transactionOps);
     rewrite.deleteWith(enqueueDelete);
     updates.add(rewrite);
     return rewrite;
@@ -154,7 +154,7 @@ class BaseTransaction implements Transaction {
   @Override
   public OverwriteFiles newOverwrite() {
     checkLastOperationCommitted("OverwriteFiles");
-    OverwriteFiles overwrite = new OverwriteData(transactionOps);
+    OverwriteFiles overwrite = new BaseOverwriteFiles(transactionOps);
     overwrite.deleteWith(enqueueDelete);
     updates.add(overwrite);
     return overwrite;
@@ -163,7 +163,7 @@ class BaseTransaction implements Transaction {
   @Override
   public ReplacePartitions newReplacePartitions() {
     checkLastOperationCommitted("ReplacePartitions");
-    ReplacePartitionsOperation replacePartitions = new ReplacePartitionsOperation(transactionOps);
+    ReplacePartitions replacePartitions = new BaseReplacePartitions(transactionOps);
     replacePartitions.deleteWith(enqueueDelete);
     updates.add(replacePartitions);
     return replacePartitions;
@@ -488,6 +488,11 @@ class BaseTransaction implements Transaction {
     @Override
     public PartitionSpec spec() {
       return current.spec();
+    }
+
+    @Override
+    public Map<Integer, PartitionSpec> specs() {
+      return current.specsById();
     }
 
     @Override
