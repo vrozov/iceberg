@@ -55,6 +55,7 @@ import org.apache.iceberg.spark.data.SparkParquetWriters;
 import org.apache.iceberg.spark.source.CommitOperations.CommitOperation;
 import org.apache.iceberg.util.PropertyUtil;
 import org.apache.iceberg.util.Tasks;
+import org.apache.spark.broadcast.Broadcast;
 import org.apache.spark.sql.catalyst.InternalRow;
 import org.apache.spark.sql.sources.v2.DataSourceOptions;
 import org.apache.spark.sql.sources.v2.writer.DataSourceWriter;
@@ -83,22 +84,24 @@ public class Writer implements DataSourceWriter {
 
   private final Table table;
   private final FileFormat format;
-  private final FileIO fileIo;
-  private final EncryptionManager encryptionManager;
+  private final Broadcast<FileIO> fileIo;
+  private final Broadcast<EncryptionManager> encryptionManager;
   private final CommitOperation<?> commitOp;
   private final String applicationId;
   private final String wapId;
   private final long targetFileSize;
 
-  public Writer(Table table, DataSourceOptions options, CommitOperation<?> commitOp, String applicationId) {
-    this(table, options, commitOp, applicationId, null);
+  public Writer(Table table, Broadcast<FileIO> fileIo, Broadcast<EncryptionManager> encryptionManager,
+                DataSourceOptions options, CommitOperation<?> commitOp, String applicationId) {
+    this(table, fileIo, encryptionManager, options, commitOp, applicationId, null);
   }
 
-  Writer(Table table, DataSourceOptions options, CommitOperation<?> commitOp, String applicationId, String wapId) {
+  Writer(Table table, Broadcast<FileIO> fileIo, Broadcast<EncryptionManager> encryptionManager,
+         DataSourceOptions options, CommitOperation<?> commitOp, String applicationId, String wapId) {
     this.table = table;
     this.format = getFileFormat(table.properties(), options);
-    this.fileIo = table.io();
-    this.encryptionManager = table.encryption();
+    this.fileIo = fileIo;
+    this.encryptionManager = encryptionManager;
     this.commitOp = commitOp;
     this.applicationId = applicationId;
     this.wapId = wapId;
@@ -163,7 +166,7 @@ public class Writer implements DataSourceWriter {
             2.0 /* exponential */)
         .throwFailureWhenFinished()
         .run(file -> {
-          fileIo.deleteFile(file.path().toString());
+          fileIo.value().deleteFile(file.path().toString());
         });
   }
 
@@ -220,13 +223,13 @@ public class Writer implements DataSourceWriter {
     private final FileFormat format;
     private final LocationProvider locations;
     private final Map<String, String> properties;
-    private final FileIO fileIo;
-    private final EncryptionManager encryptionManager;
+    private final Broadcast<FileIO> fileIo;
+    private final Broadcast<EncryptionManager> encryptionManager;
     private final long targetFileSize;
 
     WriterFactory(PartitionSpec spec, FileFormat format, LocationProvider locations,
-                  Map<String, String> properties, FileIO fileIo, EncryptionManager encryptionManager,
-                  long targetFileSize) {
+                  Map<String, String> properties, Broadcast<FileIO> fileIo,
+                  Broadcast<EncryptionManager> encryptionManager, long targetFileSize) {
       this.spec = spec;
       this.format = format;
       this.locations = locations;
@@ -242,9 +245,9 @@ public class Writer implements DataSourceWriter {
       AppenderFactory<InternalRow> appenderFactory = new SparkAppenderFactory();
 
       if (spec.fields().isEmpty()) {
-        return new UnpartitionedWriter(spec, format, appenderFactory, fileFactory, fileIo, targetFileSize);
+        return new UnpartitionedWriter(spec, format, appenderFactory, fileFactory, fileIo.value(), targetFileSize);
       } else {
-        return new PartitionedWriter(spec, format, appenderFactory, fileFactory, fileIo, targetFileSize);
+        return new PartitionedWriter(spec, format, appenderFactory, fileFactory, fileIo.value(), targetFileSize);
       }
     }
 
@@ -306,16 +309,17 @@ public class Writer implements DataSourceWriter {
        * Generates EncryptedOutputFile for UnpartitionedWriter.
        */
       public EncryptedOutputFile newOutputFile() {
-        OutputFile file = fileIo.newOutputFile(locations.newDataLocation(generateFilename()));
-        return encryptionManager.encrypt(file);
+        OutputFile file = fileIo.value().newOutputFile(locations.newDataLocation(generateFilename()));
+        return encryptionManager.value().encrypt(file);
       }
 
       /**
        * Generates EncryptedOutputFile for PartitionedWriter.
        */
       public EncryptedOutputFile newOutputFile(PartitionKey key) {
-        OutputFile rawOutputFile = fileIo.newOutputFile(locations.newDataLocation(spec, key, generateFilename()));
-        return encryptionManager.encrypt(rawOutputFile);
+        String newDataLocation = locations.newDataLocation(spec, key, generateFilename());
+        OutputFile rawOutputFile = fileIo.value().newOutputFile(newDataLocation);
+        return encryptionManager.value().encrypt(rawOutputFile);
       }
     }
   }
