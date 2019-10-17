@@ -65,6 +65,7 @@ import org.apache.iceberg.spark.data.SparkParquetReaders;
 import org.apache.iceberg.types.TypeUtil;
 import org.apache.iceberg.types.Types;
 import org.apache.iceberg.util.ByteBuffers;
+import org.apache.spark.broadcast.Broadcast;
 import org.apache.spark.sql.catalyst.InternalRow;
 import org.apache.spark.sql.catalyst.expressions.Attribute;
 import org.apache.spark.sql.catalyst.expressions.AttributeReference;
@@ -105,8 +106,8 @@ public class Reader implements DataSourceReader, SupportsPushDownFilters, Suppor
   private final Integer splitLookback;
   private final Long splitOpenFileCost;
   private final boolean includeFileName;
-  private final FileIO fileIo;
-  private final EncryptionManager encryptionManager;
+  private final Broadcast<FileIO> fileIo;
+  private final Broadcast<EncryptionManager> encryptionManager;
   private final boolean caseSensitive;
   private StructType requestedSchema = null;
   private List<Expression> filterExpressions = null;
@@ -117,7 +118,8 @@ public class Reader implements DataSourceReader, SupportsPushDownFilters, Suppor
   private StructType type = null; // cached because Spark accesses it multiple times
   private List<CombinedScanTask> tasks = null; // lazy cache of tasks
 
-  public Reader(Table table, boolean caseSensitive, DataSourceOptions options) {
+  public Reader(Table table, Broadcast<FileIO> fileIo, Broadcast<EncryptionManager> encryptionManager,
+                boolean caseSensitive, DataSourceOptions options) {
     this.table = table;
     this.snapshotId = options.get("snapshot-id").map(Long::parseLong).orElse(null);
     this.asOfTimestamp = options.get("as-of-timestamp").map(Long::parseLong).orElse(null);
@@ -131,8 +133,8 @@ public class Reader implements DataSourceReader, SupportsPushDownFilters, Suppor
     this.splitLookback = options.get("lookback").map(Integer::parseInt).orElse(null);
     this.splitOpenFileCost = options.get("file-open-cost").map(Long::parseLong).orElse(null);
     this.includeFileName = options.get("include-file-name").map(Boolean::parseBoolean).orElse(false);
-    this.fileIo = table.io();
-    this.encryptionManager = table.encryption();
+    this.fileIo = fileIo;
+    this.encryptionManager = encryptionManager;
     this.caseSensitive = caseSensitive;
   }
 
@@ -291,16 +293,16 @@ public class Reader implements DataSourceReader, SupportsPushDownFilters, Suppor
     private final CombinedScanTask task;
     private final String tableSchemaString;
     private final String expectedSchemaString;
-    private final FileIO fileIo;
-    private final EncryptionManager encryptionManager;
+    private final Broadcast<FileIO> fileIo;
+    private final Broadcast<EncryptionManager> encryptionManager;
     private final boolean caseSensitive;
 
     private transient Schema tableSchema = null;
     private transient Schema expectedSchema = null;
 
-    public ReadTask(
-        CombinedScanTask task, String tableSchemaString, String expectedSchemaString, FileIO fileIo,
-        EncryptionManager encryptionManager, boolean caseSensitive) {
+    public ReadTask(CombinedScanTask task, String tableSchemaString, String expectedSchemaString,
+                    Broadcast<FileIO> fileIo, Broadcast<EncryptionManager> encryptionManager,
+                    boolean caseSensitive) {
       this.task = task;
       this.tableSchemaString = tableSchemaString;
       this.expectedSchemaString = expectedSchemaString;
@@ -311,8 +313,8 @@ public class Reader implements DataSourceReader, SupportsPushDownFilters, Suppor
 
     @Override
     public InputPartitionReader<InternalRow> createPartitionReader() {
-      return new TaskDataReader(task, lazyTableSchema(), lazyExpectedSchema(), fileIo,
-        encryptionManager, caseSensitive);
+      return new TaskDataReader(task, lazyTableSchema(), lazyExpectedSchema(), fileIo.value(),
+        encryptionManager.value(), caseSensitive);
     }
 
     private Schema lazyTableSchema() {

@@ -26,7 +26,10 @@ import org.apache.iceberg.OverwriteFiles;
 import org.apache.iceberg.Snapshot;
 import org.apache.iceberg.SnapshotUpdate;
 import org.apache.iceberg.Table;
+import org.apache.iceberg.encryption.EncryptionManager;
 import org.apache.iceberg.expressions.Expressions;
+import org.apache.iceberg.io.FileIO;
+import org.apache.spark.broadcast.Broadcast;
 import org.apache.spark.sql.sources.v2.DataSourceOptions;
 import org.apache.spark.sql.sources.v2.writer.WriterCommitMessage;
 import org.apache.spark.sql.sources.v2.writer.streaming.StreamWriter;
@@ -43,8 +46,9 @@ public class StreamingWriter extends Writer implements StreamWriter {
   private final String queryId;
   private final OutputMode mode;
 
-  StreamingWriter(Table table, DataSourceOptions options, String queryId, OutputMode mode, String applicationId) {
-    super(table, options, CommitOperations.Append.get(), applicationId);
+  StreamingWriter(Table table, Broadcast<FileIO> fileIo, Broadcast<EncryptionManager> encryptionManager,
+                  DataSourceOptions options, String queryId, OutputMode mode, String applicationId) {
+    super(table, fileIo, encryptionManager, options, CommitOperations.Append.get(), applicationId);
     this.queryId = queryId;
     this.mode = mode;
   }
