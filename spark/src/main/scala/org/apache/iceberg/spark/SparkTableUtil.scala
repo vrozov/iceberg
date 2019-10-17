@@ -158,7 +158,7 @@ object SparkTableUtil {
         s"$name=${partition(name)}"
       }.mkString("/")
 
-      var builder = DataFiles.builder(spec)
+      DataFiles.builder(spec)
         .withPath(path)
         .withFormat(format)
         .withFileSizeInBytes(fileSize)
@@ -168,12 +168,8 @@ object SparkTableUtil {
           arrayToMap(nullValueCounts),
           arrayToMap(lowerBounds),
           arrayToMap(upperBounds)))
-
-      if (partitionKey.isEmpty) {
-        builder.build()
-      } else {
-        builder.withPartitionPath(partitionKey).build()
-      }
+        .withPartitionPath(partitionKey)
+        .build()
     }
   }
 
