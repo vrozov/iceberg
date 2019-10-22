@@ -36,8 +36,13 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Map;
 import java.util.UUID;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.iceberg.hadoop.HadoopFileIO;
+import org.apache.iceberg.hadoop.SerializableConfiguration;
 import org.apache.iceberg.io.FileAppender;
+import org.apache.iceberg.io.FileIO;
 import org.apache.iceberg.parquet.Parquet;
+import org.apache.iceberg.spark.IcebergKryoRegistrator;
 import org.apache.iceberg.spark.data.RandomData;
 import org.apache.iceberg.spark.data.SparkParquetWriters;
 import org.apache.iceberg.types.Types;
@@ -88,6 +93,11 @@ public class TestDataFileSerialization {
       .withEncryptionKeyMetadata(ByteBuffer.allocate(4).putInt(34))
       .build();
 
+  private SparkConf sparkConf = new SparkConf()
+      .set("spark.kryo.registrator", IcebergKryoRegistrator.class.getName());
+
+  private Kryo kryo = new KryoSerializer(sparkConf).newKryo();
+
   @Rule
   public TemporaryFolder temp = new TemporaryFolder();
 
@@ -95,7 +105,6 @@ public class TestDataFileSerialization {
   public void testDataFileKryoSerialization() throws Exception {
     File data = temp.newFile();
     Assert.assertTrue(data.delete());
-    Kryo kryo = new KryoSerializer(new SparkConf()).newKryo();
 
     try (Output out = new Output(new FileOutputStream(data))) {
       kryo.writeClassAndObject(out, DATA_FILE);
@@ -172,13 +181,53 @@ public class TestDataFileSerialization {
       writer.close();
     }
 
-    Kryo kryo = new KryoSerializer(new SparkConf()).newKryo();
     File dataFile = temp.newFile();
     try (Output out = new Output(new FileOutputStream(dataFile))) {
       kryo.writeClassAndObject(out, writer.splitOffsets());
     }
     try (Input in = new Input(new FileInputStream(dataFile))) {
       kryo.readClassAndObject(in);
+    }
+  }
+
+  @Test
+  public void testSerializableConfiguration() throws IOException {
+    File data = temp.newFile();
+    Assert.assertTrue(data.delete());
+
+    Configuration hadoopConf = new Configuration();
+    hadoopConf.set("k", "v");
+    SerializableConfiguration conf = new SerializableConfiguration(hadoopConf);
+
+    try (Output out = new Output(new FileOutputStream(data))) {
+      kryo.writeClassAndObject(out, conf);
+    }
+
+    try (Input in = new Input(new FileInputStream(data))) {
+      Object obj = kryo.readClassAndObject(in);
+      Assert.assertTrue("Should be a SerializableConfiguration", obj instanceof SerializableConfiguration);
+      SerializableConfiguration readConf = (SerializableConfiguration) obj;
+      Assert.assertNotNull("Hadoop conf must not be null", readConf.get());
+      Assert.assertEquals("v", readConf.get().get("k"));
+    }
+  }
+
+  @Test
+  public void testFileIO() throws IOException {
+    File data = temp.newFile();
+    Assert.assertTrue(data.delete());
+
+    FileIO io = new HadoopFileIO(new Configuration());
+
+    try (Output out = new Output(new FileOutputStream(data))) {
+      kryo.writeClassAndObject(out, io);
+    }
+
+    try (Input in = new Input(new FileInputStream(data))) {
+      Object obj = kryo.readClassAndObject(in);
+      Assert.assertTrue("Should be a FileIO", obj instanceof FileIO);
+      FileIO readIO = (FileIO) obj;
+      readIO.deleteFile(data.toString());
     }
   }
 
