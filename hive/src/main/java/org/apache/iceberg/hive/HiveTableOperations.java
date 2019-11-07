@@ -20,6 +20,7 @@
 package org.apache.iceberg.hive;
 
 import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.Collections;
@@ -239,6 +240,10 @@ public class HiveTableOperations extends BaseMetastoreTableOperations {
     storageDescriptor.setInputFormat("org.apache.hadoop.mapred.FileInputFormat");
     SerDeInfo serDeInfo = new SerDeInfo();
     serDeInfo.setSerializationLib("org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe");
+    // we need to persist the path in serde params for compatibility with Spark tables
+    Map<String, String> serDeParams = Maps.newHashMap();
+    serDeParams.put("path", metadata.location());
+    serDeInfo.setParameters(serDeParams);
     storageDescriptor.setSerdeInfo(serDeInfo);
     return storageDescriptor;
   }
