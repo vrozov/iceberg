@@ -90,14 +90,17 @@ public class Writer implements DataSourceWriter {
   private final String applicationId;
   private final String wapId;
   private final long targetFileSize;
+  private final Schema dsSchema;
 
   public Writer(Table table, Broadcast<FileIO> fileIo, Broadcast<EncryptionManager> encryptionManager,
-                DataSourceOptions options, CommitOperation<?> commitOp, String applicationId) {
-    this(table, fileIo, encryptionManager, options, commitOp, applicationId, null);
+                DataSourceOptions options, CommitOperation<?> commitOp, String applicationId,
+                Schema dsSchema) {
+    this(table, fileIo, encryptionManager, options, commitOp, applicationId, null, dsSchema);
   }
 
   Writer(Table table, Broadcast<FileIO> fileIo, Broadcast<EncryptionManager> encryptionManager,
-         DataSourceOptions options, CommitOperation<?> commitOp, String applicationId, String wapId) {
+         DataSourceOptions options, CommitOperation<?> commitOp, String applicationId, String wapId,
+         Schema dsSchema) {
     this.table = table;
     this.format = getFileFormat(table.properties(), options);
     this.fileIo = fileIo;
@@ -105,6 +108,7 @@ public class Writer implements DataSourceWriter {
     this.commitOp = commitOp;
     this.applicationId = applicationId;
     this.wapId = wapId;
+    this.dsSchema = dsSchema;
 
     long tableTargetFileSize = PropertyUtil.propertyAsLong(
         table.properties(), WRITE_TARGET_FILE_SIZE_BYTES, WRITE_TARGET_FILE_SIZE_BYTES_DEFAULT);
@@ -126,7 +130,8 @@ public class Writer implements DataSourceWriter {
   @Override
   public DataWriterFactory<InternalRow> createWriterFactory() {
     return new WriterFactory(
-        table.spec(), format, table.locationProvider(), table.properties(), fileIo, encryptionManager, targetFileSize);
+        table.spec(), format, table.locationProvider(), table.properties(), fileIo, encryptionManager, targetFileSize,
+        dsSchema);
   }
 
   @Override
@@ -226,10 +231,12 @@ public class Writer implements DataSourceWriter {
     private final Broadcast<FileIO> fileIo;
     private final Broadcast<EncryptionManager> encryptionManager;
     private final long targetFileSize;
+    private final Schema dsSchema;
 
     WriterFactory(PartitionSpec spec, FileFormat format, LocationProvider locations,
                   Map<String, String> properties, Broadcast<FileIO> fileIo,
-                  Broadcast<EncryptionManager> encryptionManager, long targetFileSize) {
+                  Broadcast<EncryptionManager> encryptionManager, long targetFileSize,
+                  Schema dsSchema) {
       this.spec = spec;
       this.format = format;
       this.locations = locations;
@@ -237,6 +244,7 @@ public class Writer implements DataSourceWriter {
       this.fileIo = fileIo;
       this.encryptionManager = encryptionManager;
       this.targetFileSize = targetFileSize;
+      this.dsSchema = dsSchema;
     }
 
     @Override
@@ -254,24 +262,23 @@ public class Writer implements DataSourceWriter {
     private class SparkAppenderFactory implements AppenderFactory<InternalRow> {
       @Override
       public FileAppender<InternalRow> newAppender(OutputFile file, FileFormat fileFormat) {
-        Schema schema = spec.schema();
         MetricsConfig metricsConfig = MetricsConfig.fromProperties(properties);
         try {
           switch (fileFormat) {
             case PARQUET:
               return Parquet.write(file)
-                  .createWriterFunc(msgType -> SparkParquetWriters.buildWriter(schema, msgType))
+                  .createWriterFunc(msgType -> SparkParquetWriters.buildWriter(dsSchema, msgType))
                   .setAll(properties)
                   .metricsConfig(metricsConfig)
-                  .schema(schema)
+                  .schema(dsSchema)
                   .overwrite()
                   .build();
 
             case AVRO:
               return Avro.write(file)
-                  .createWriterFunc(ignored -> new SparkAvroWriter(schema))
+                  .createWriterFunc(ignored -> new SparkAvroWriter(dsSchema))
                   .setAll(properties)
-                  .schema(schema)
+                  .schema(dsSchema)
                   .overwrite()
                   .build();
 

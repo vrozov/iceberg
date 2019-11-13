@@ -23,6 +23,7 @@ import java.util.Map;
 import org.apache.iceberg.AppendFiles;
 import org.apache.iceberg.DataFile;
 import org.apache.iceberg.OverwriteFiles;
+import org.apache.iceberg.Schema;
 import org.apache.iceberg.Snapshot;
 import org.apache.iceberg.SnapshotUpdate;
 import org.apache.iceberg.Table;
@@ -47,8 +48,9 @@ public class StreamingWriter extends Writer implements StreamWriter {
   private final OutputMode mode;
 
   StreamingWriter(Table table, Broadcast<FileIO> fileIo, Broadcast<EncryptionManager> encryptionManager,
-                  DataSourceOptions options, String queryId, OutputMode mode, String applicationId) {
-    super(table, fileIo, encryptionManager, options, CommitOperations.Append.get(), applicationId);
+                  DataSourceOptions options, String queryId, OutputMode mode, String applicationId,
+                  Schema dsSchema) {
+    super(table, fileIo, encryptionManager, options, CommitOperations.Append.get(), applicationId, dsSchema);
     this.queryId = queryId;
     this.mode = mode;
   }
