@@ -87,7 +87,7 @@ public class IcebergSource implements DataSourceV2, ReadSupport, WriteSupport, D
         "Save mode %s is not supported", mode);
     Configuration conf = new Configuration(lazyBaseConf());
     Table table = getTableAndResolveHadoopConfiguration(options, conf);
-    validateWriteSchema(table.schema(), dsStruct);
+    validateWriteSchema(table.schema(), dsStruct, checkNullability(options));
     validatePartitionTransforms(table.spec());
     String appId = lazySparkSession().sparkContext().applicationId();
     String wapId = lazySparkSession().conf().get("spark.wap.id", null);
@@ -105,7 +105,7 @@ public class IcebergSource implements DataSourceV2, ReadSupport, WriteSupport, D
         "Output mode %s is not supported", mode);
     Configuration conf = new Configuration(lazyBaseConf());
     Table table = getTableAndResolveHadoopConfiguration(options, conf);
-    validateWriteSchema(table.schema(), dsStruct);
+    validateWriteSchema(table.schema(), dsStruct, checkNullability(options));
     validatePartitionTransforms(table.spec());
     // Spark 2.4.x passes runId to createStreamWriter instead of real queryId,
     // so we fetch it directly from sparkContext to make writes idempotent
@@ -170,9 +170,14 @@ public class IcebergSource implements DataSourceV2, ReadSupport, WriteSupport, D
         .forEach(key -> baseConf.set(key.replaceFirst("hadoop.", ""), options.get(key)));
   }
 
-  protected void validateWriteSchema(Schema tableSchema, StructType dsStruct) {
+  protected void validateWriteSchema(Schema tableSchema, StructType dsStruct, Boolean checkNullability) {
     Schema dsSchema = SparkSchemaUtil.convert(tableSchema, dsStruct);
-    List<String> errors = CheckCompatibility.writeCompatibilityErrors(tableSchema, dsSchema);
+    List<String> errors;
+    if (checkNullability) {
+      errors = CheckCompatibility.writeCompatibilityErrors(tableSchema, dsSchema);
+    } else {
+      errors = CheckCompatibility.typeCompatibilityErrors(tableSchema, dsSchema);
+    }
     if (!errors.isEmpty()) {
       StringBuilder sb = new StringBuilder();
       sb.append("Cannot write incompatible dataset to table with schema:\n")
@@ -185,7 +190,7 @@ public class IcebergSource implements DataSourceV2, ReadSupport, WriteSupport, D
     }
   }
 
-  private void validatePartitionTransforms(PartitionSpec spec) {
+  protected void validatePartitionTransforms(PartitionSpec spec) {
     if (spec.fields().stream().anyMatch(field -> field.transform() instanceof UnknownTransform)) {
       String unsupported = spec.fields().stream()
           .map(PartitionField::transform)
@@ -196,5 +201,12 @@ public class IcebergSource implements DataSourceV2, ReadSupport, WriteSupport, D
       throw new UnsupportedOperationException(
           String.format("Cannot write using unsupported transforms: %s", unsupported));
     }
+  }
+
+  protected boolean checkNullability(DataSourceOptions options) {
+    boolean sparkCheckNullability = Boolean.parseBoolean(lazySpark.conf()
+        .get("spark.sql.iceberg.check-nullability", "true"));
+    boolean dataFrameCheckNullability = options.getBoolean("check-nullability", true);
+    return sparkCheckNullability && dataFrameCheckNullability;
   }
 }
