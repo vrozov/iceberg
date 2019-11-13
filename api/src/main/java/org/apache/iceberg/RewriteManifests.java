@@ -29,6 +29,10 @@ import java.util.function.Predicate;
  * described only by the manifest files that were added, and commits that snapshot as the
  * current.
  * <p>
+ * This API can be used to rewrite matching manifests according to a clustering function as well as
+ * to replace specific manifests. Manifests that are deleted or added directly are ignored during
+ * the rewrite process. The set of active files in replaced manifests must be the same as in new manifests.
+ * <p>
  * When committing, these changes will be applied to the latest table snapshot. Commit conflicts
  * will be resolved by applying the changes to the new latest snapshot and reattempting the commit.
  */
@@ -37,9 +41,8 @@ public interface RewriteManifests extends SnapshotUpdate<RewriteManifests> {
    * Groups an existing {@link DataFile} by a cluster key produced by a function. The cluster key
    * will determine which data file will be associated with a particular manifest. All data files
    * with the same cluster key will be written to the same manifest (unless the file is large and
-   * split into multiple files).
-   *
-   * Note that either clusterBy/rewriteIf should be used or deleteManifest/addManifest, not both.
+   * split into multiple files). Manifests deleted via {@link #deleteManifest(ManifestFile)} or
+   * added via {@link #addManifest(ManifestFile)} are ignored during the rewrite process.
    *
    * @param func Function used to cluster data files to manifests.
    * @return this for method chaining
@@ -51,8 +54,6 @@ public interface RewriteManifests extends SnapshotUpdate<RewriteManifests> {
    * that do not match the predicate are kept as-is. If this is not called and no predicate is set, then
    * all manifests will be rewritten.
    *
-   * Note that either clusterBy/rewriteIf should be used or deleteManifest/addManifest, not both.
-   *
    * @param predicate Predicate used to determine which manifests to rewrite. If true then the manifest
    *                  file will be included for rewrite. If false then then manifest is kept as-is.
    * @return this for method chaining
@@ -60,11 +61,7 @@ public interface RewriteManifests extends SnapshotUpdate<RewriteManifests> {
   RewriteManifests rewriteIf(Predicate<ManifestFile> predicate);
 
   /**
-   * Deletes a {@link ManifestFile manifest file} from the table. This method should be used
-   * together with {@link #addManifest(ManifestFile)} when manifests are rewritten using
-   * an external process.
-   *
-   * Note that either clusterBy/rewriteIf should be used or deleteManifest/addManifest, not both.
+   * Deletes a {@link ManifestFile manifest file} from the table.
    *
    * @param manifest a manifest to delete
    * @return this for method chaining
@@ -72,11 +69,8 @@ public interface RewriteManifests extends SnapshotUpdate<RewriteManifests> {
   RewriteManifests deleteManifest(ManifestFile manifest);
 
   /**
-   * Adds a {@link ManifestFile manifest file} to the table. This method should be used
-   * together with {@link #deleteManifest(ManifestFile)} when manifests are rewritten using
-   * an external process. The added manifest cannot contain new or deleted files.
-   *
-   * Note that either clusterBy/rewriteIf should be used or deleteManifest/addManifest, not both.
+   * Adds a {@link ManifestFile manifest file} to the table. The added manifest cannot contain new
+   * or deleted files.
    *
    * @param manifest a manifest to add
    * @return this for method chaining
