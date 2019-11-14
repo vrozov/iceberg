@@ -26,7 +26,6 @@ import com.google.common.collect.Sets;
 import com.google.common.io.Files;
 import java.io.File;
 import java.io.IOException;
-import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
@@ -125,10 +124,20 @@ public class TableTestBase {
   }
 
   ManifestFile writeManifest(DataFile... files) throws IOException {
-    ManifestEntry[] entries = Arrays.stream(files)
-        .map(file -> manifestEntry(ManifestEntry.Status.ADDED, -1, file))
-        .toArray(size -> new ManifestEntry[size]);
-    return writeManifest("input.m0.avro", entries);
+    File manifestFile = temp.newFile("input.m0.avro");
+    Assert.assertTrue(manifestFile.delete());
+    OutputFile outputFile = table.ops().io().newOutputFile(manifestFile.getCanonicalPath());
+
+    ManifestWriter writer = ManifestWriter.write(table.spec(), outputFile);
+    try {
+      for (DataFile file : files) {
+        writer.add(file);
+      }
+    } finally {
+      writer.close();
+    }
+
+    return writer.toManifestFile();
   }
 
   ManifestFile writeManifest(String fileName, ManifestEntry... entries) throws IOException {

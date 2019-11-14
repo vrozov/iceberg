@@ -299,5 +299,7 @@ public interface Catalog {
    * @param metadataFileLocation the location of a metadata file
    * @return a Table instance
    */
-  Table registerTable(TableIdentifier identifier, String metadataFileLocation);
+  default Table registerTable(TableIdentifier identifier, String metadataFileLocation) {
+    throw new UnsupportedOperationException("Registering tables is not supported");
+  }
 }
