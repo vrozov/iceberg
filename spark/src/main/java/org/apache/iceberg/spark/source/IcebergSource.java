@@ -79,11 +79,11 @@ public class IcebergSource implements DataSourceV2, ReadSupport, WriteSupport, D
   public DataSourceReader createReader(StructType readSchema, DataSourceOptions options) {
     Configuration conf = new Configuration(lazyBaseConf());
     Table table = getTableAndResolveHadoopConfiguration(options, conf);
-    String caseSensitive = lazySparkSession().conf().get("spark.sql.caseSensitive", "true");
+    String caseSensitive = lazySparkSession().conf().get("spark.sql.caseSensitive");
     Broadcast<FileIO> fileIo = lazySparkContext().broadcast(table.io());
     Broadcast<EncryptionManager> encryptionManager = lazySparkContext().broadcast(table.encryption());
 
-    Reader reader = new Reader(table, fileIo, encryptionManager, Boolean.valueOf(caseSensitive), options);
+    Reader reader = new Reader(table, fileIo, encryptionManager, Boolean.parseBoolean(caseSensitive), options);
     if (readSchema != null) {
       // convert() will fail if readSchema contains fields not in table.schema()
       SparkSchemaUtil.convert(table.schema(), readSchema);
