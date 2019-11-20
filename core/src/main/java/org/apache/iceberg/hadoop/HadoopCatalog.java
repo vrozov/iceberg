@@ -19,11 +19,17 @@
 
 package org.apache.iceberg.hadoop;
 
+import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Sets;
 import java.io.Closeable;
 import java.io.IOException;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.iceberg.BaseMetastoreCatalog;
@@ -32,7 +38,10 @@ import org.apache.iceberg.Schema;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.TableMetadata;
 import org.apache.iceberg.TableOperations;
+import org.apache.iceberg.catalog.Namespace;
 import org.apache.iceberg.catalog.TableIdentifier;
+import org.apache.iceberg.exceptions.NoSuchTableException;
+import org.apache.iceberg.exceptions.NotFoundException;
 import org.apache.iceberg.exceptions.RuntimeIOException;
 
 /**
@@ -80,18 +89,56 @@ public class HadoopCatalog extends BaseMetastoreCatalog implements Closeable {
   }
 
   @Override
+  public List<TableIdentifier> listTables(Namespace namespace) {
+    Preconditions.checkArgument(namespace.levels().length >= 1,
+        "Missing database in table identifier: %s", namespace);
+
+    Joiner slash = Joiner.on("/");
+    Path nsPath = new Path(slash.join(warehouseLocation, slash.join(namespace.levels())));
+    FileSystem fs = Util.getFs(nsPath, conf);
+    Set<TableIdentifier> tblIdents = Sets.newHashSet();
+
+    try {
+      if (!fs.exists(nsPath) || !fs.isDirectory(nsPath)) {
+        throw new NotFoundException("Unknown namespace " + namespace);
+      }
+
+      for (FileStatus s : fs.listStatus(nsPath)) {
+        Path path = s.getPath();
+        if (!fs.isDirectory(path)) {
+          // Ignore the path which is not a directory.
+          continue;
+        }
+
+        Path metadataPath = new Path(path, "metadata");
+        if (fs.exists(metadataPath) && fs.isDirectory(metadataPath)) {
+          // Only the path which contains metadata is the path for table, otherwise it could be
+          // still a namespace.
+          TableIdentifier tblIdent = TableIdentifier.of(namespace, path.getName());
+          tblIdents.add(tblIdent);
+        }
+      }
+    } catch (IOException ioe) {
+      throw new RuntimeException("Failed to list tables under " + namespace, ioe);
+    }
+
+    return Lists.newArrayList(tblIdents);
+  }
+
+  @Override
   public Table createTable(
       TableIdentifier identifier, Schema schema, PartitionSpec spec, String location, Map<String, String> properties) {
-    Preconditions.checkArgument(identifier.namespace().levels().length >= 1,
-        "Missing database in table identifier: %s", identifier);
     Preconditions.checkArgument(location == null, "Cannot set a custom location for a path-based table");
     return super.createTable(identifier, schema, spec, null, properties);
   }
 
   @Override
+  protected boolean isValidIdentifier(TableIdentifier identifier) {
+    return identifier.namespace().levels().length >= 1;
+  }
+
+  @Override
   protected TableOperations newTableOps(TableIdentifier identifier) {
-    Preconditions.checkArgument(identifier.namespace().levels().length >= 1,
-        "Missing database in table identifier: %s", identifier);
     return new HadoopTableOperations(new Path(defaultWarehouseLocation(identifier)), conf);
   }
 
@@ -111,8 +158,9 @@ public class HadoopCatalog extends BaseMetastoreCatalog implements Closeable {
 
   @Override
   public boolean dropTable(TableIdentifier identifier, boolean purge) {
-    Preconditions.checkArgument(identifier.namespace().levels().length >= 1,
-        "Missing database in table identifier: %s", identifier);
+    if (!isValidIdentifier(identifier)) {
+      throw new NoSuchTableException("Invalid identifier: %s", identifier);
+    }
 
     Path tablePath = new Path(defaultWarehouseLocation(identifier));
     TableOperations ops = newTableOps(identifier);
