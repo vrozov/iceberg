@@ -21,12 +21,13 @@ package org.apache.iceberg.hive;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hive.conf.HiveConf;
-import org.apache.hadoop.hive.metastore.HiveMetaStoreClient;
+import org.apache.hadoop.hive.metastore.IMetaStoreClient;
 import org.apache.hadoop.hive.metastore.api.MetaException;
+import org.apache.iceberg.hive.metrics.HiveMetricsUtil;
 import org.apache.thrift.TException;
 import org.apache.thrift.transport.TTransportException;
 
-public class HiveClientPool extends ClientPool<HiveMetaStoreClient, TException> {
+public class HiveClientPool extends ClientPool<IMetaStoreClient, TException> {
   private final HiveConf hiveConf;
 
   HiveClientPool(Configuration conf) {
@@ -39,9 +40,9 @@ public class HiveClientPool extends ClientPool<HiveMetaStoreClient, TException> 
   }
 
   @Override
-  protected HiveMetaStoreClient newClient()  {
+  protected IMetaStoreClient newClient() {
     try {
-      return new HiveMetaStoreClient(hiveConf);
+      return HiveMetricsUtil.newMetaStoreClientWithMeterIfConfigured(hiveConf);
     } catch (MetaException e) {
       throw new RuntimeMetaException(e, "Failed to connect to Hive Metastore");
     } catch (Throwable t) {
@@ -56,7 +57,7 @@ public class HiveClientPool extends ClientPool<HiveMetaStoreClient, TException> 
   }
 
   @Override
-  protected HiveMetaStoreClient reconnect(HiveMetaStoreClient client) {
+  protected IMetaStoreClient reconnect(IMetaStoreClient client) {
     try {
       client.close();
       client.reconnect();
@@ -67,7 +68,7 @@ public class HiveClientPool extends ClientPool<HiveMetaStoreClient, TException> 
   }
 
   @Override
-  protected void close(HiveMetaStoreClient client) {
+  protected void close(IMetaStoreClient client) {
     client.close();
   }
 }

@@ -36,6 +36,8 @@ import org.apache.iceberg.hive.HiveCatalog;
 import org.apache.iceberg.hive.HiveCatalogs;
 import org.apache.iceberg.io.FileIO;
 import org.apache.iceberg.spark.SparkSchemaUtil;
+import org.apache.iceberg.spark.metrics.MeteredReader;
+import org.apache.iceberg.spark.metrics.SparkMetricsUtil;
 import org.apache.iceberg.spark.source.CommitOperations.Append;
 import org.apache.iceberg.spark.source.CommitOperations.CommitOperation;
 import org.apache.iceberg.spark.source.CommitOperations.DynamicPartitionOverwrite;
@@ -83,7 +85,9 @@ public class IcebergSource implements DataSourceV2, ReadSupport, WriteSupport, D
     Broadcast<FileIO> fileIo = lazySparkContext().broadcast(table.io());
     Broadcast<EncryptionManager> encryptionManager = lazySparkContext().broadcast(table.encryption());
 
-    Reader reader = new Reader(table, fileIo, encryptionManager, Boolean.parseBoolean(caseSensitive), options);
+    Reader reader = createMeteredReaderIfConfigured(conf, table, fileIo, encryptionManager,
+        Boolean.parseBoolean(caseSensitive), options);
+
     if (readSchema != null) {
       // convert() will fail if readSchema contains fields not in table.schema()
       SparkSchemaUtil.convert(table.schema(), readSchema);
@@ -91,6 +95,19 @@ public class IcebergSource implements DataSourceV2, ReadSupport, WriteSupport, D
     }
 
     return reader;
+  }
+
+  private Reader createMeteredReaderIfConfigured(Configuration conf, Table table, Broadcast<FileIO> fileIo,
+      Broadcast<EncryptionManager> encryptionManager,
+      boolean caseSensitive, DataSourceOptions options) {
+    Preconditions.checkArgument(conf != null, "Configuration is null");
+
+    if (conf.getBoolean("iceberg.dropwizard.enable-metrics-collection", false)) {
+      return new MeteredReader(SparkMetricsUtil.metricRegistry(), table, fileIo,
+          encryptionManager, caseSensitive, options);
+    } else {
+      return new Reader(table, fileIo, encryptionManager, caseSensitive, options);
+    }
   }
 
   @Override

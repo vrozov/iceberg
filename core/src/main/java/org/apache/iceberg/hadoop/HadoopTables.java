@@ -40,6 +40,7 @@ import org.apache.iceberg.TableOperations;
 import org.apache.iceberg.Tables;
 import org.apache.iceberg.exceptions.AlreadyExistsException;
 import org.apache.iceberg.exceptions.NoSuchTableException;
+import org.apache.iceberg.metrics.CoreMetricsUtil;
 
 /**
  * Implementation of Iceberg tables that uses the Hadoop FileSystem
@@ -140,7 +141,8 @@ public class HadoopTables implements Tables, Configurable {
   }
 
   private TableOperations newTableOps(String location) {
-    return new HadoopTableOperations(new Path(location), conf);
+    TableOperations tableOps = new HadoopTableOperations(new Path(location), conf);
+    return CoreMetricsUtil.wrapWithMeterIfConfigured(conf, "hadoop", tableOps);
   }
 
   @Override
