@@ -173,7 +173,7 @@ public class HiveCatalog extends BaseMetastoreCatalog implements Closeable {
   public org.apache.iceberg.Table registerTable(TableIdentifier identifier, String metadataFileLocation) {
     TableOperations ops = newTableOps(identifier);
     HadoopInputFile metadataFile = HadoopInputFile.fromLocation(metadataFileLocation, conf);
-    TableMetadata metadata = TableMetadataParser.read(ops, metadataFile);
+    TableMetadata metadata = TableMetadataParser.read(ops.io(), metadataFile);
     ops.commit(null, metadata);
     return new BaseTable(ops, identifier.toString());
   }
