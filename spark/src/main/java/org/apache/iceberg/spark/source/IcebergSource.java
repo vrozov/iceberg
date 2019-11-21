@@ -36,6 +36,8 @@ import org.apache.iceberg.hive.HiveCatalog;
 import org.apache.iceberg.hive.HiveCatalogs;
 import org.apache.iceberg.io.FileIO;
 import org.apache.iceberg.spark.SparkSchemaUtil;
+import org.apache.iceberg.spark.metrics.MeteredReader;
+import org.apache.iceberg.spark.metrics.SparkMetricsUtil;
 import org.apache.iceberg.spark.source.CommitOperations.Append;
 import org.apache.iceberg.spark.source.CommitOperations.CommitOperation;
 import org.apache.iceberg.spark.source.CommitOperations.DynamicPartitionOverwrite;
@@ -72,12 +74,40 @@ public class IcebergSource implements DataSourceV2, ReadSupport, WriteSupport, D
 
   @Override
   public DataSourceReader createReader(DataSourceOptions options) {
+    return createReader(null, options);
+  }
+
+  @Override
+  public DataSourceReader createReader(StructType readSchema, DataSourceOptions options) {
     Configuration conf = new Configuration(lazyBaseConf());
     Table table = getTableAndResolveHadoopConfiguration(options, conf);
-    String caseSensitive = lazySparkSession().conf().get("spark.sql.caseSensitive", "true");
+    String caseSensitive = lazySparkSession().conf().get("spark.sql.caseSensitive");
     Broadcast<FileIO> fileIo = lazySparkContext().broadcast(table.io());
     Broadcast<EncryptionManager> encryptionManager = lazySparkContext().broadcast(table.encryption());
-    return new Reader(table, fileIo, encryptionManager, Boolean.valueOf(caseSensitive), options);
+
+    Reader reader = createMeteredReaderIfConfigured(conf, table, fileIo, encryptionManager,
+        Boolean.parseBoolean(caseSensitive), options);
+
+    if (readSchema != null) {
+      // convert() will fail if readSchema contains fields not in table.schema()
+      SparkSchemaUtil.convert(table.schema(), readSchema);
+      reader.pruneColumns(readSchema);
+    }
+
+    return reader;
+  }
+
+  private Reader createMeteredReaderIfConfigured(Configuration conf, Table table, Broadcast<FileIO> fileIo,
+      Broadcast<EncryptionManager> encryptionManager,
+      boolean caseSensitive, DataSourceOptions options) {
+    Preconditions.checkArgument(conf != null, "Configuration is null");
+
+    if (conf.getBoolean("iceberg.dropwizard.enable-metrics-collection", false)) {
+      return new MeteredReader(SparkMetricsUtil.metricRegistry(), table, fileIo,
+          encryptionManager, caseSensitive, options);
+    } else {
+      return new Reader(table, fileIo, encryptionManager, caseSensitive, options);
+    }
   }
 
   @Override
@@ -87,14 +117,15 @@ public class IcebergSource implements DataSourceV2, ReadSupport, WriteSupport, D
         "Save mode %s is not supported", mode);
     Configuration conf = new Configuration(lazyBaseConf());
     Table table = getTableAndResolveHadoopConfiguration(options, conf);
-    validateWriteSchema(table.schema(), dsStruct);
+    Schema dsSchema = SparkSchemaUtil.convert(table.schema(), dsStruct);
+    validateWriteSchema(table.schema(), dsSchema, checkNullability(options));
     validatePartitionTransforms(table.spec());
     String appId = lazySparkSession().sparkContext().applicationId();
     String wapId = lazySparkSession().conf().get("spark.wap.id", null);
     Broadcast<FileIO> fileIo = lazySparkContext().broadcast(table.io());
     Broadcast<EncryptionManager> encryptionManager = lazySparkContext().broadcast(table.encryption());
     CommitOperation commitOp = mode == SaveMode.Overwrite ? DynamicPartitionOverwrite.get() : Append.get();
-    return Optional.of(new Writer(table, fileIo, encryptionManager, options, commitOp, appId, wapId));
+    return Optional.of(new Writer(table, fileIo, encryptionManager, options, commitOp, appId, wapId, dsSchema));
   }
 
   @Override
@@ -105,7 +136,8 @@ public class IcebergSource implements DataSourceV2, ReadSupport, WriteSupport, D
         "Output mode %s is not supported", mode);
     Configuration conf = new Configuration(lazyBaseConf());
     Table table = getTableAndResolveHadoopConfiguration(options, conf);
-    validateWriteSchema(table.schema(), dsStruct);
+    Schema dsSchema = SparkSchemaUtil.convert(table.schema(), dsStruct);
+    validateWriteSchema(table.schema(), dsSchema, checkNullability(options));
     validatePartitionTransforms(table.spec());
     // Spark 2.4.x passes runId to createStreamWriter instead of real queryId,
     // so we fetch it directly from sparkContext to make writes idempotent
@@ -113,7 +145,7 @@ public class IcebergSource implements DataSourceV2, ReadSupport, WriteSupport, D
     String appId = lazySparkSession().sparkContext().applicationId();
     Broadcast<FileIO> fileIo = lazySparkContext().broadcast(table.io());
     Broadcast<EncryptionManager> encryptionManager = lazySparkContext().broadcast(table.encryption());
-    return new StreamingWriter(table, fileIo, encryptionManager, options, queryId, mode, appId);
+    return new StreamingWriter(table, fileIo, encryptionManager, options, queryId, mode, appId, dsSchema);
   }
 
   protected Table findTable(DataSourceOptions options, Configuration conf) {
@@ -146,7 +178,7 @@ public class IcebergSource implements DataSourceV2, ReadSupport, WriteSupport, D
 
   protected Configuration lazyBaseConf() {
     if (lazyConf == null) {
-      this.lazyConf = lazySparkSession().sparkContext().hadoopConfiguration();
+      this.lazyConf = lazySparkSession().sessionState().newHadoopConf();
     }
     return lazyConf;
   }
@@ -170,9 +202,13 @@ public class IcebergSource implements DataSourceV2, ReadSupport, WriteSupport, D
         .forEach(key -> baseConf.set(key.replaceFirst("hadoop.", ""), options.get(key)));
   }
 
-  protected void validateWriteSchema(Schema tableSchema, StructType dsStruct) {
-    Schema dsSchema = SparkSchemaUtil.convert(tableSchema, dsStruct);
-    List<String> errors = CheckCompatibility.writeCompatibilityErrors(tableSchema, dsSchema);
+  protected void validateWriteSchema(Schema tableSchema, Schema dsSchema, Boolean checkNullability) {
+    List<String> errors;
+    if (checkNullability) {
+      errors = CheckCompatibility.writeCompatibilityErrors(tableSchema, dsSchema);
+    } else {
+      errors = CheckCompatibility.typeCompatibilityErrors(tableSchema, dsSchema);
+    }
     if (!errors.isEmpty()) {
       StringBuilder sb = new StringBuilder();
       sb.append("Cannot write incompatible dataset to table with schema:\n")
@@ -185,7 +221,7 @@ public class IcebergSource implements DataSourceV2, ReadSupport, WriteSupport, D
     }
   }
 
-  private void validatePartitionTransforms(PartitionSpec spec) {
+  protected void validatePartitionTransforms(PartitionSpec spec) {
     if (spec.fields().stream().anyMatch(field -> field.transform() instanceof UnknownTransform)) {
       String unsupported = spec.fields().stream()
           .map(PartitionField::transform)
@@ -196,5 +232,12 @@ public class IcebergSource implements DataSourceV2, ReadSupport, WriteSupport, D
       throw new UnsupportedOperationException(
           String.format("Cannot write using unsupported transforms: %s", unsupported));
     }
+  }
+
+  protected boolean checkNullability(DataSourceOptions options) {
+    boolean sparkCheckNullability = Boolean.parseBoolean(lazySpark.conf()
+        .get("spark.sql.iceberg.check-nullability", "true"));
+    boolean dataFrameCheckNullability = options.getBoolean("check-nullability", true);
+    return sparkCheckNullability && dataFrameCheckNullability;
   }
 }

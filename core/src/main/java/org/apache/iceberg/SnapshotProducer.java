@@ -168,12 +168,12 @@ abstract class SnapshotProducer<ThisT> implements SnapshotUpdate<ThisT> {
         throw new RuntimeIOException(e, "Failed to write manifest list file");
       }
 
-      return new BaseSnapshot(ops,
+      return new BaseSnapshot(ops.io(),
           snapshotId(), parentSnapshotId, System.currentTimeMillis(), operation(), summary(base),
           ops.io().newInputFile(manifestList.location()));
 
     } else {
-      return new BaseSnapshot(ops,
+      return new BaseSnapshot(ops.io(),
           snapshotId(), parentSnapshotId, System.currentTimeMillis(), operation(), summary(base),
           manifests);
     }
@@ -309,7 +309,7 @@ abstract class SnapshotProducer<ThisT> implements SnapshotUpdate<ThisT> {
 
   private static ManifestFile addMetadata(TableOperations ops, ManifestFile manifest) {
     try (ManifestReader reader = ManifestReader.read(
-        ops.io().newInputFile(manifest.path()), ops.current()::spec)) {
+        ops.io().newInputFile(manifest.path()), ops.current().specsById())) {
       PartitionSummary stats = new PartitionSummary(ops.current().spec(manifest.partitionSpecId()));
       int addedFiles = 0;
       int existingFiles = 0;

@@ -161,26 +161,7 @@ task deploySite(type: Exec) {
   commandLine 'mkdocs', 'gh-deploy'
 }
 
-// The following code is temporary to allow for incrementally migrating projects to use Baseline.
-
-// We enable baseline-idea everywhere so that everyone can use IntelliJ to build code against the
-// Baseline style guide.
-def baselineProjects = [ project("iceberg-api"), project("iceberg-common"), project("iceberg-core"),
-                         project("iceberg-data"), project("iceberg-orc"), project("iceberg-spark"),
-                         project("iceberg-hive") ]
-
-
-configure(subprojects - baselineProjects) {
-  // error-prone is brought in with baseline-idea, but we're not prepared to handle error-prone
-  // linting errors everywhere yet.
-  pluginManager.withPlugin("com.palantir.baseline-error-prone") {
-    tasks.withType(JavaCompile).configureEach { task ->
-      options.errorprone.enabled = false
-    }
-  }
-}
-
-configure(baselineProjects) {
+configure(subprojects) {
   // Currently, if any subproject applies the blanket Baseline plugin, it forces the Baseline plugin
   // to be applied to ALL projects. And we are not prepared to address all of the build errors that
   // occur as a result at this time. Furthermore, baseline-format will not work out of the box for
@@ -252,6 +233,8 @@ project(':iceberg-core') {
     compile "com.fasterxml.jackson.core:jackson-databind"
     compile "com.fasterxml.jackson.core:jackson-core"
     compile "com.github.ben-manes.caffeine:caffeine"
+
+    compileOnly "io.dropwizard.metrics:metrics-core"
     compileOnly("org.apache.hadoop:hadoop-client") {
       exclude group: 'org.apache.avro', module: 'avro'
       exclude group: 'org.slf4j', module: 'slf4j-log4j12'
@@ -265,7 +248,9 @@ project(':iceberg-data') {
   dependencies {
     compile project(':iceberg-api')
     compile project(':iceberg-core')
+
     compileOnly project(':iceberg-parquet')
+    compileOnly "io.dropwizard.metrics:metrics-core"
 
     testCompile("org.apache.hadoop:hadoop-client") {
       exclude group: 'org.apache.avro', module: 'avro'
@@ -286,6 +271,7 @@ project(':iceberg-hive') {
     compile project(':iceberg-core')
 
     compileOnly "org.apache.avro:avro"
+    compileOnly "io.dropwizard.metrics:metrics-core"
 
     compileOnly("org.apache.hive:hive-metastore") {
       exclude group: 'org.apache.avro', module: 'avro'
@@ -412,6 +398,8 @@ project(':iceberg-pig') {
     compile project(':iceberg-common')
     compile project(':iceberg-core')
     compile project(':iceberg-parquet')
+
+    compile "org.apache.commons:commons-lang3"
 
     compileOnly("org.apache.pig:pig") {
       exclude group: "junit", module: "junit"

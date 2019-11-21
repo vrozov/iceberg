@@ -20,7 +20,7 @@
 package org.apache.iceberg
 
 import com.google.common.collect.ImmutableList
-import java.util.UUID
+import java.util.{Map => JMap, UUID}
 import org.apache.hadoop.fs.Path
 import org.apache.iceberg.io.{FileIO, OutputFile}
 import org.apache.iceberg.spark.SparkTableUtil.Manifest
@@ -47,18 +47,18 @@ private[iceberg] case class RewriteManifestsAction[K](
     }
 
     val io = table.io
-    val specLookup = ActionUtil.buildSpecLookup(table)
+    val specs = table.specs
     val avgManifestEntrySizeInBytes = ActionUtil.computeAvgManifestEntrySizeInBytes(
       matchingManifests,
       strategy.defaultManifestEntrySizeInBytes)
 
-    val fileDS = buildFileDS(spark, matchingManifests, specLookup, io)
+    val fileDS = buildFileDS(spark, matchingManifests, specs, io)
     fileDS.cache()
 
     try {
       val keyMetadataSizes = computeMetadataSizePerKey(spark, fileDS, avgManifestEntrySizeInBytes)
       val bins = computeBins(keyMetadataSizes, strategy.targetManifestSizeInBytes)
-      val newManifests = writeManifests(spark, fileDS, bins, specLookup, io)
+      val newManifests = writeManifests(spark, fileDS, bins, specs, io)
       replaceManifests(table, matchingManifests, newManifests)
     } finally {
       fileDS.unpersist(blocking = false)
@@ -76,7 +76,7 @@ private[iceberg] case class RewriteManifestsAction[K](
   private def buildFileDS(
       spark: SparkSession,
       manifests: Seq[ManifestFile],
-      specLookup: Integer => PartitionSpec,
+      specs: JMap[Integer, PartitionSpec],
       io: FileIO): Dataset[(Int, Long, K, DataFile)] = {
 
     val implicits = new Implicits(spark, strategy.clusterKeyEncoder)
@@ -86,7 +86,7 @@ private[iceberg] case class RewriteManifestsAction[K](
     val numPartitions = spark.conf.get("spark.default.parallelism", manifestPaths.size.toString)
     val manifestPathDS = spark.sparkContext.parallelize(manifestPaths, numPartitions.toInt).toDS()
     manifestPathDS.flatMap { path =>
-      val reader = ManifestReader.read(io.newInputFile(path), specLookup)
+      val reader = ManifestReader.read(io.newInputFile(path), specs)
       val spec = reader.spec
       try {
         val filteredManifest = reader.select(ImmutableList.of("*"))
@@ -156,7 +156,7 @@ private[iceberg] case class RewriteManifestsAction[K](
       spark: SparkSession,
       fileDS: Dataset[(Int, Long, K, DataFile)],
       bins: Map[(Int, K), String],
-      specLookup: Integer => PartitionSpec,
+      specs: JMap[Integer, PartitionSpec],
       io: FileIO): Array[ManifestFile] = {
 
     val implicits = new Implicits(spark, strategy.clusterKeyEncoder)
@@ -182,7 +182,7 @@ private[iceberg] case class RewriteManifestsAction[K](
           io.newOutputFile(FileFormat.AVRO.addExtension(location.toString))
         }
 
-        val spec = specLookup(specId)
+        val spec = specs.get(specId)
         val writer = new ManifestsWriter(spec, manifestFileSupplier, targetManifestSizeInBytes.toLong)
         try {
           fileIter.foreach { case (snapshotId, file) => writer.existing(file, snapshotId) }

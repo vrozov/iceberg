@@ -98,6 +98,7 @@ abstract class MergingSnapshotProducer<ThisT> extends SnapshotProducer<ThisT> {
 
   // cache the new manifest once it is written
   private ManifestFile cachedNewManifest = null;
+  private ManifestFile firstAppendedManifest = null;
   private boolean hasNewFiles = false;
 
   // cache merge results to reuse when retrying
@@ -204,9 +205,15 @@ abstract class MergingSnapshotProducer<ThisT> extends SnapshotProducer<ThisT> {
   protected void add(ManifestFile manifest) {
     // the manifest must be rewritten with this update's snapshot ID
     try (ManifestReader reader = ManifestReader.read(
-        ops.io().newInputFile(manifest.path()), ops.current()::spec)) {
-      appendManifests.add(ManifestWriter.copyAppendManifest(
-          reader, manifestPath(manifestCount.getAndIncrement()), snapshotId(), appendedManifestsSummary));
+        ops.io().newInputFile(manifest.path()), ops.current().specsById())) {
+      ManifestFile manifestFile = ManifestWriter.copyAppendManifest(
+          reader, manifestPath(manifestCount.getAndIncrement()), snapshotId(), appendedManifestsSummary);
+      appendManifests.add(manifestFile);
+      // keep reference of the first appended manifest, so that we can avoid merging first bin(s)
+      // which has the first appended manifest and have not crossed the limit of minManifestsCountToMerge
+      if (firstAppendedManifest == null) {
+        firstAppendedManifest = manifestFile;
+      }
     } catch (IOException e) {
       throw new RuntimeIOException(e, "Failed to close manifest: %s", manifest);
     }
@@ -441,7 +448,7 @@ abstract class MergingSnapshotProducer<ThisT> extends SnapshotProducer<ThisT> {
     }
 
     try (ManifestReader reader = ManifestReader.read(
-        ops.io().newInputFile(manifest.path()), ops.current()::spec)) {
+        ops.io().newInputFile(manifest.path()), ops.current().specsById())) {
 
       // this is reused to compare file paths with the delete set
       CharSequenceWrapper pathWrapper = CharSequenceWrapper.wrap("");
@@ -589,10 +596,11 @@ abstract class MergingSnapshotProducer<ThisT> extends SnapshotProducer<ThisT> {
             return;
           }
 
-          // if the bin has a new manifest (the new data files) then only merge it if the number of
-          // manifests is above the minimum count. this is applied only to bins with an in-memory
+          // if the bin has a new manifest (the new data files) or appended manifest file then only merge it
+          // if the number of manifests is above the minimum count. this is applied only to bins with an in-memory
           // manifest so that large manifests don't prevent merging older groups.
-          if (bin.contains(cachedNewManifest) && bin.size() < minManifestsCountToMerge) {
+          if ((bin.contains(cachedNewManifest) || bin.contains(firstAppendedManifest)) &&
+              bin.size() < minManifestsCountToMerge) {
             // not enough to merge, add all manifest files to the output list
             outputManifests.addAll(bin);
           } else {
@@ -618,7 +626,7 @@ abstract class MergingSnapshotProducer<ThisT> extends SnapshotProducer<ThisT> {
     try {
       for (ManifestFile manifest : bin) {
         try (ManifestReader reader = ManifestReader.read(
-            ops.io().newInputFile(manifest.path()), ops.current()::spec)) {
+            ops.io().newInputFile(manifest.path()), ops.current().specsById())) {
           for (ManifestEntry entry : reader.entries()) {
             if (entry.status() == Status.DELETED) {
               // suppress deletes from previous snapshots. only files deleted by this snapshot

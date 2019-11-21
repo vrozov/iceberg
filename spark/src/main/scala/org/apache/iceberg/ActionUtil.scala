@@ -19,14 +19,7 @@
 
 package org.apache.iceberg
 
-import scala.collection.JavaConverters._
-
 private[iceberg] object ActionUtil {
-
-  def buildSpecLookup(table: Table): Integer => PartitionSpec = {
-    val specMap = table.specs.asScala
-    id => specMap(id)
-  }
 
   def computeAvgManifestEntrySizeInBytes(manifests: Iterable[ManifestFile], defaultSize: Long): Long = {
     var totalSize = 0L
